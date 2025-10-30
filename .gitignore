@@ -46,3 +46,15 @@ dkms.conf
 
 example
 cmake_example
+build
+
+# Python build artifacts
+*.pyd
+*.so
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+dist/
+.eggs/

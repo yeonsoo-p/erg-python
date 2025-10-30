@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(if exist \"c:\\workspace\\erg-python\\erg_python\\__init__.py\" type \"c:\\workspace\\erg-python\\erg_python\\__init__.py\" else echo \"File does not exist\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

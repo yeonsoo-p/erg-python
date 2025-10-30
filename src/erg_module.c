@@ -3,6 +3,7 @@
 #include <structmember.h>
 #include "erg.h"
 #include <string.h>
+#include <stdio.h>
 
 /* ERG object structure */
 typedef struct {
@@ -18,6 +19,8 @@ static PyTypeObject ERGType;
 /* ERG.__new__ */
 static PyObject *ERG_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
     ERGObject *self;
+    (void)args;
+    (void)kwds;
     self = (ERGObject *)type->tp_alloc(type, 0);
     if (self != NULL) {
         self->initialized = 0;
@@ -29,16 +32,61 @@ static PyObject *ERG_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
 
 /* ERG.__init__ */
 static int ERG_init(ERGObject *self, PyObject *args, PyObject *kwds) {
+    PyObject *filepath_obj;
     const char *filepath;
+    char info_path[4096];
     static char *kwlist[] = {"filepath", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "s", kwlist, &filepath)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &filepath_obj)) {
         return -1;
     }
+
+    /* Accept both string and Path objects */
+    if (PyUnicode_Check(filepath_obj)) {
+        filepath = PyUnicode_AsUTF8(filepath_obj);
+        if (filepath == NULL) {
+            return -1;
+        }
+    } else {
+        /* Try to convert to string using __fspath__ protocol (for Path objects) */
+        PyObject *fspath = PyOS_FSPath(filepath_obj);
+        if (fspath == NULL) {
+            PyErr_SetString(PyExc_TypeError, "filepath must be a string or path-like object");
+            return -1;
+        }
+        filepath = PyUnicode_AsUTF8(fspath);
+        Py_DECREF(fspath);
+        if (filepath == NULL) {
+            return -1;
+        }
+    }
+
+    /* Check if .erg file exists */
+    FILE *erg_file = fopen(filepath, "rb");
+    if (erg_file == NULL) {
+        PyErr_Format(PyExc_FileNotFoundError, "ERG file not found: '%s'", filepath);
+        return -1;
+    }
+    fclose(erg_file);
+
+    /* Check if .erg.info file exists */
+    snprintf(info_path, sizeof(info_path), "%s.info", filepath);
+    FILE *info_file = fopen(info_path, "r");
+    if (info_file == NULL) {
+        PyErr_Format(PyExc_FileNotFoundError, "ERG info file not found: '%s'", info_path);
+        return -1;
+    }
+    fclose(info_file);
 
     /* Initialize ERG structure */
     erg_init(&self->erg, filepath);
     self->initialized = 1;
+
+    /* Auto-parse the file */
+    Py_BEGIN_ALLOW_THREADS
+    erg_parse(&self->erg);
+    Py_END_ALLOW_THREADS
+    self->parsed = 1;
 
     return 0;
 }
@@ -51,22 +99,6 @@ static void ERG_dealloc(ERGObject *self) {
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
-/* ERG.parse() */
-static PyObject *ERG_parse(ERGObject *self, PyObject *Py_UNUSED(ignored)) {
-    if (!self->initialized) {
-        PyErr_SetString(PyExc_RuntimeError, "ERG object not initialized");
-        return NULL;
-    }
-
-    /* Parse the ERG file */
-    Py_BEGIN_ALLOW_THREADS
-    erg_parse(&self->erg);
-    Py_END_ALLOW_THREADS
-
-    self->parsed = 1;
-    Py_RETURN_NONE;
-}
-
 /* ERG.get_signal(name) -> numpy array or list */
 static PyObject *ERG_get_signal(ERGObject *self, PyObject *args) {
     const char *signal_name;
@@ -75,7 +107,7 @@ static PyObject *ERG_get_signal(ERGObject *self, PyObject *args) {
     size_t i;
 
     if (!self->parsed) {
-        PyErr_SetString(PyExc_RuntimeError, "ERG file not parsed. Call parse() first");
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
         return NULL;
     }
 
@@ -165,7 +197,7 @@ static PyObject *ERG_get_signals(ERGObject *self, PyObject *args) {
     Py_ssize_t i;
 
     if (!self->parsed) {
-        PyErr_SetString(PyExc_RuntimeError, "ERG file not parsed. Call parse() first");
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
         return NULL;
     }
 
@@ -278,9 +310,10 @@ cleanup:
 static PyObject *ERG_get_signal_names(ERGObject *self, void *closure) {
     PyObject *list;
     size_t i;
+    (void)closure;
 
     if (!self->parsed) {
-        PyErr_SetString(PyExc_RuntimeError, "ERG file not parsed. Call parse() first");
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
         return NULL;
     }
 
@@ -303,8 +336,9 @@ static PyObject *ERG_get_signal_names(ERGObject *self, void *closure) {
 
 /* ERG.sample_count property */
 static PyObject *ERG_get_sample_count(ERGObject *self, void *closure) {
+    (void)closure;
     if (!self->parsed) {
-        PyErr_SetString(PyExc_RuntimeError, "ERG file not parsed. Call parse() first");
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
         return NULL;
     }
     return PyLong_FromSize_t(self->erg.sample_count);
@@ -317,7 +351,7 @@ static PyObject *ERG_get_signal_info(ERGObject *self, PyObject *args) {
     PyObject *dict;
 
     if (!self->parsed) {
-        PyErr_SetString(PyExc_RuntimeError, "ERG file not parsed. Call parse() first");
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
         return NULL;
     }
 
@@ -364,8 +398,6 @@ static PyObject *ERG_get_signal_info(ERGObject *self, PyObject *args) {
 
 /* Method definitions */
 static PyMethodDef ERG_methods[] = {
-    {"parse", (PyCFunction)ERG_parse, METH_NOARGS,
-     "Parse the ERG file and load metadata"},
     {"get_signal", (PyCFunction)ERG_get_signal, METH_VARARGS,
      "Get signal data by name as numpy array or list"},
     {"get_signals", (PyCFunction)ERG_get_signals, METH_VARARGS,
