@@ -16,6 +16,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 from erg_python import ERG
 import matplotlib.pyplot as plt
 
+# Import cmparser for comparison
+
+from cmparser import ERG as CMParserERG
+HAS_CMPARSER = True
+
 # Global variable for test file path
 TEST_ERG_FILE = None
 
@@ -84,7 +89,7 @@ def test_basic():
     end = time_ns()
     batch_cold_time = end - start
 
-    for name, data in signals.items():
+    for name, data in zip(available_signals, signals):
         print(f"  {name}: type={type(data).__name__}, length={len(data)}")
 
     print(f"Batch cold retrieval time: {batch_cold_time:,} ns ({batch_cold_time / 1_000_000:.3f} ms)")
@@ -205,6 +210,87 @@ def test_numpy_integration():
         return True
 
 
+def test_performance_comparison():
+    """Compare performance between C extension and pure Python cmparser"""
+    if not HAS_CMPARSER:
+        print("\ncmparser not available, skipping performance comparison")
+        return True
+
+    erg_file = TEST_ERG_FILE
+    if not erg_file or not erg_file.exists():
+        print(f"Skipping performance test: test file not available")
+        return False
+
+    print("\n" + "=" * 60)
+    print("Performance Comparison: erg_python (C) vs cmparser (Python)")
+    print("=" * 60)
+
+    # Test signals to retrieve
+    test_signals = ["Time", "Car.ax", "Car.v"]
+
+    # Benchmark C extension (erg_python)
+    print("\n[1] erg_python (C Extension):")
+    print("-" * 40)
+
+    # File loading + parsing
+    start = time_ns()
+    erg_c = ERG(erg_file)
+    end = time_ns()
+    c_load_time = end - start
+    print(f"  Load + parse:      {c_load_time:>12,} ns ({c_load_time / 1_000_000:>8.3f} ms)")
+
+    # Single signal retrieval
+    available_test_signals = [s for s in test_signals if s in erg_c.signal_names]
+    if not available_test_signals:
+        print("Warning: None of the test signals found in file")
+        return False
+
+    signal_times = []
+    for signal_name in available_test_signals:
+        start = time_ns()
+        data = erg_c.get_signal(signal_name)
+        end = time_ns()
+        signal_times.append(end - start)
+
+    c_avg_signal_time = sum(signal_times) / len(signal_times)
+    print(f"  Avg signal:        {c_avg_signal_time:>12,.0f} ns ({c_avg_signal_time / 1_000_000:>8.3f} ms)")
+
+    # Benchmark pure Python (cmparser)
+    print("\n[2] cmparser (Pure Python):")
+    print("-" * 40)
+
+    # File loading + parsing
+    start = time_ns()
+    erg_py = CMParserERG(erg_file)
+    end = time_ns()
+    py_load_time = end - start
+    print(f"  Load + parse:      {py_load_time:>12,} ns ({py_load_time / 1_000_000:>8.3f} ms)")
+
+    # Single signal retrieval
+    signal_times = []
+    for signal_name in available_test_signals:
+        start = time_ns()
+        data = erg_py[signal_name]
+        end = time_ns()
+        signal_times.append(end - start)
+
+    py_avg_signal_time = sum(signal_times) / len(signal_times)
+    print(f"  Avg signal:        {py_avg_signal_time:>12,.0f} ns ({py_avg_signal_time / 1_000_000:>8.3f} ms)")
+
+    # Calculate speedups
+    print("\n" + "=" * 60)
+    print("Speedup (erg_python vs cmparser):")
+    print("=" * 60)
+
+    load_speedup = py_load_time / c_load_time
+    signal_speedup = py_avg_signal_time / c_avg_signal_time
+
+    print(f"  Load + parse:  {load_speedup:>6.2f}x faster")
+    print(f"  Signal access: {signal_speedup:>6.2f}x faster")
+
+    return True
+
+
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(
@@ -235,6 +321,7 @@ Examples:
         ("Signal info", test_signal_info),
         ("Error handling", test_error_handling),
         ("NumPy integration", test_numpy_integration),
+        ("Performance comparison", test_performance_comparison),
     ]
 
     passed = 0

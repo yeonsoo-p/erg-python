@@ -4,7 +4,8 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "C:/Users/ipg-pc-59/AppData/Roaming/uv/python/cpython-3.13.9-windows-x86_64-none/include/**"
+                "C:/Users/ipg-pc-59/AppData/Roaming/uv/python/cpython-3.13.9-windows-x86_64-none/include/**",
+                "${workspaceFolder}/venv/Lib/site-packages/numpy/_core/include"
             ],
             "defines": [
                 "_DEBUG",

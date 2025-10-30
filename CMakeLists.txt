@@ -9,10 +9,14 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(Python3_ROOT_DIR "C:/Users/ipg-pc-59/AppData/Roaming/uv/python/cpython-3.13.9-windows-x86_64-none")
 find_package(Python3 REQUIRED COMPONENTS Development)
 
+# NumPy include directory
+set(NUMPY_INCLUDE_DIR "C:/workspace/erg-python/venv/Lib/site-packages/numpy/_core/include")
+
 # Add include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${Python3_INCLUDE_DIRS}
+    ${NUMPY_INCLUDE_DIR}
 )
 
 # Add the Python extension module
