@@ -52,7 +52,6 @@ class ERG:
             RuntimeError: If the file cannot be parsed
         """
         self._erg = _erg_c.ERG(filepath)
-        self._cache: dict[str, np.ndarray] = {}
         self.data: pd.DataFrame | None = None
 
     def get_signal(self, signal_name: str) -> np.ndarray:
@@ -78,17 +77,14 @@ class ERG:
             >>> print(f"Max velocity: {max(velocity):.2f}")
             >>> # Signal is now cached in erg.data DataFrame
         """
-        # Check if signal is already in cache
-        if signal_name in self._cache:
-            return self._cache[signal_name]
+        # Check if signal is already cached in DataFrame
+        if self.data is not None and signal_name in self.data.columns:
+            return self.data[signal_name].values
 
         # Get signal from C extension
         signal_data = self._erg.get_signal(signal_name)
 
-        # Cache the signal
-        self._cache[signal_name] = signal_data
-
-        # Update DataFrame
+        # Update DataFrame cache
         if self.data is None:
             self.data = pd.DataFrame({signal_name: signal_data})
         else:
@@ -96,7 +92,7 @@ class ERG:
 
         return signal_data
 
-    def get_signals(self, signal_names: list[str]) -> dict[str, np.ndarray]:
+    def get_signals(self, signal_names: list[str]) -> tuple[np.ndarray, ...]:
         """
         Get multiple signals in a batch operation.
 
@@ -108,32 +104,35 @@ class ERG:
             signal_names: List of signal names to retrieve
 
         Returns:
-            Dictionary mapping signal names to their data (NumPy arrays)
+            Tuple of NumPy arrays in the same order as signal_names
 
         Example:
             >>> erg = ERG("simulation.erg")
-            >>> signals = erg.get_signals(["Time", "Car.v", "Car.ax"])
-            >>> time = signals["Time"]
-            >>> velocity = signals["Car.v"]
+            >>> time, velocity, accel = erg.get_signals(["Time", "Car.v", "Car.ax"])
             >>> # All signals are now cached in erg.data DataFrame
         """
-        # Check which signals are not in cache
-        uncached = [name for name in signal_names if name not in self._cache]
+        # Check which signals are not cached in DataFrame
+        if self.data is None:
+            uncached = signal_names
+        else:
+            uncached = [name for name in signal_names if name not in self.data.columns]
 
-        # Get uncached signals from C extension
+        # Get uncached signals from C extension (returns tuple)
         if uncached:
-            new_signals = self._erg.get_signals(uncached)
-            self._cache.update(new_signals)
+            signal_arrays = self._erg.get_signals(uncached)
 
-            # Update DataFrame
+            # Convert tuple to dict for DataFrame
+            new_signals = dict(zip(uncached, signal_arrays))
+
+            # Update DataFrame cache
             if self.data is None:
                 self.data = pd.DataFrame(new_signals)
             else:
                 for name, data in new_signals.items():
                     self.data[name] = data
 
-        # Return all requested signals from cache
-        return {name: self._cache[name] for name in signal_names}
+        # Return tuple of all requested signals from DataFrame
+        return tuple(self.data[name].values for name in signal_names)
 
     def get_signal_info(self, signal_name: str) -> dict[str, str | int | float]:
         """
@@ -193,10 +192,30 @@ class ERG:
         """
         return self._erg.sample_count
 
+    def __getitem__(self, signal_name: str) -> np.ndarray:
+        """
+        Get signal data using dictionary-style access.
+
+        Args:
+            signal_name: Name of the signal
+
+        Returns:
+            NumPy array of signal data
+
+        Raises:
+            KeyError: If the signal name is not found
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> velocity = erg["Car.v"]
+            >>> time = erg["Time"]
+        """
+        return self.get_signal(signal_name)
+
     def __repr__(self) -> str:
         """String representation of ERG object."""
         try:
-            cached = len(self._cache)
+            cached = len(self.data.columns) if self.data is not None else 0
             return f"ERG(signals={len(self.signal_names)}, samples={self.sample_count}, cached={cached})"
         except:
             return "ERG(not loaded)"
