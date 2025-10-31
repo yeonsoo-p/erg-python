@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(if exist \"c:\\workspace\\erg-python\\erg_python\\__init__.py\" type \"c:\\workspace\\erg-python\\erg_python\\__init__.py\" else echo \"File does not exist\")"
+      "Bash(if exist \"c:\\workspace\\erg-python\\erg_python\\__init__.py\" type \"c:\\workspace\\erg-python\\erg_python\\__init__.py\" else echo \"File does not exist\")",
+      "Bash(where:*)",
+      "Bash(if exist build_wheels.py del build_wheels.py)",
+      "Bash(if exist build_all_wheels.bat del build_all_wheels.bat)",
+      "Bash(if exist pyproject.toml del pyproject.toml)",
+      "Bash(del build_wheels.py build_all_wheels.bat pyproject.toml)",
+      "Bash(dir:*)",
+      "Bash(venv313Scriptsactivate.bat)",
+      "Bash(python -m build:*)",
+      "Bash(.\\venv313\\Scripts\\python.exe -m build:*)",
+      "Bash(c:/workspace/erg-python/venv313/Scripts/python.exe -m build:*)",
+      "Bash(c:/workspace/erg-python/venv313/Scripts/python.exe -m pip install:*)",
+      "Bash(python -m zipfile:*)",
+      "Bash(findstr:*)",
+      "Bash(c:/workspace/erg-python/venv313/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []

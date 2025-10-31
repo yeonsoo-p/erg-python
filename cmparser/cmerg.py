@@ -156,6 +156,7 @@ class ERG:
         self.dt = self.info["SimParam.DeltaT"]
 
         self.read()
+
     def read(self) -> None:
         """Read and parse the binary ERG file.
 
