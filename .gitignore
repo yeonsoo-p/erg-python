@@ -46,7 +46,8 @@ dkms.conf
 
 example
 cmake_example
-build
+build*/
+venv*/
 
 # Python build artifacts
 *.pyd

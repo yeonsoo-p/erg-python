@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 # Import cmparser for comparison
 
 from cmparser import ERG as CMParserERG
+
 HAS_CMPARSER = True
 
 # Global variable for test file path
@@ -116,7 +117,7 @@ def test_basic():
         plot_time = erg.get_signal("Time")
 
         fig, axes = plt.subplots(3, 1, figsize=(12, 8))
-        fig.suptitle('ERG Signal Plots', fontsize=14, fontweight='bold')
+        fig.suptitle("ERG Signal Plots", fontsize=14, fontweight="bold")
 
         for idx, signal_name in enumerate(plot_signals):
             signal_data = erg.get_signal(signal_name)
@@ -127,7 +128,7 @@ def test_basic():
             axes[idx].grid(True, alpha=0.3)
             axes[idx].set_xlim(plot_time[0], plot_time[-1])
 
-        axes[-1].set_xlabel('Time [s]')
+        axes[-1].set_xlabel("Time [s]")
         plt.tight_layout()
         plt.show()
         print("Plot displayed!")
@@ -186,6 +187,7 @@ def test_numpy_integration():
     """Test numpy array conversion if numpy is available"""
     try:
         import numpy as np
+
         print("\nNumPy is available, testing numpy integration...")
 
         erg_file = TEST_ERG_FILE
@@ -301,13 +303,9 @@ if __name__ == "__main__":
 Examples:
   python test_erg.py simulation.erg
   python test_erg.py ../examples/test.erg
-        """
+        """,
     )
-    parser.add_argument(
-        "filepath",
-        type=Path,
-        help="Path to the ERG file to test with"
-    )
+    parser.add_argument("filepath", type=Path, help="Path to the ERG file to test with")
 
     args = parser.parse_args()
     TEST_ERG_FILE = args.filepath
@@ -343,6 +341,7 @@ Examples:
             failed += 1
             print(f"✗ {test_name} failed with exception: {e}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'=' * 60}")

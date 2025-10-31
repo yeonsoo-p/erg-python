@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import re
 
 
-
 __all__ = [
     "ERGInfo",
     "TestRun",
@@ -80,7 +79,6 @@ class InfoFile(OrderedDict):
         self.abs_path = Path(self.abs_path).resolve()
         if self.abs_path.exists():
             self.read()
-        
 
     def read(self) -> None:
         reading_table = False
@@ -167,7 +165,7 @@ class ERGInfo(InfoFile):
 
 
 class TestRun(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/TestRun"
         super().__init__(name, project=project)
 
@@ -188,25 +186,25 @@ class TestRun(InfoFile):
 
 
 class Vehicle(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/Vehicle"
         super().__init__(name, project=project)
 
 
 class Trailer(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/Trailer"
         super().__init__(name, project=project)
 
 
 class Road(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/Road"
         super().__init__(name, project=project)
 
 
 class Config(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/Config"
         super().__init__(name, project=project)
 
@@ -216,36 +214,36 @@ class OutputQuantities(Config):
 
 
 class PlugInfo(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Plugins"
         super().__init__(name, project=project)
 
 
 class SKC(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/Chassis"
         super().__init__(name, project=project)
 
 
 class Sensor(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/Sensor"
         super().__init__(name, project=project)
 
 
 class Tire(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/Tire"
         super().__init__(name, project=project)
 
 
 class Driver(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/Driver"
         super().__init__(name, project=project)
 
 
 class Traffic(InfoFile):
-    def __init__(self, name: str | Path, project = None) -> None:
+    def __init__(self, name: str | Path, project=None) -> None:
         self.default_dir = "Data/Traffic"
         super().__init__(name, project=project)

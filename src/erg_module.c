@@ -301,12 +301,101 @@ static PyObject *ERG_get_signal_info(ERGObject *self, PyObject *args) {
   return dict;
 }
 
+/* ERG.get_unit(name) */
+static PyObject *ERG_get_unit(ERGObject *self, PyObject *args) {
+  const char *signal_name;
+  const ERGSignal *signal;
+
+  if (!self->parsed) {
+    PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+    return NULL;
+  }
+
+  if (!PyArg_ParseTuple(args, "s", &signal_name)) {
+    return NULL;
+  }
+
+  signal = erg_get_signal_info(&self->erg, signal_name);
+  if (signal == NULL) {
+    PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
+    return NULL;
+  }
+
+  return PyUnicode_FromString(signal->unit ? signal->unit : "");
+}
+
+/* ERG.list_signals() */
+static PyObject *ERG_list_signals(ERGObject *self, PyObject *Py_UNUSED(args)) {
+  PyObject *list;
+  size_t i;
+
+  if (!self->parsed) {
+    PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+    return NULL;
+  }
+
+  list = PyList_New(self->erg.signal_count);
+  if (list == NULL) {
+    return NULL;
+  }
+
+  for (i = 0; i < self->erg.signal_count; i++) {
+    PyObject *name = PyUnicode_FromString(self->erg.signals[i].name);
+    if (name == NULL) {
+      Py_DECREF(list);
+      return NULL;
+    }
+    PyList_SET_ITEM(list, i, name);
+  }
+
+  return list;
+}
+
+/* ERG.get_units() */
+static PyObject *ERG_get_units(ERGObject *self, PyObject *Py_UNUSED(args)) {
+  PyObject *dict;
+  size_t i;
+
+  if (!self->parsed) {
+    PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+    return NULL;
+  }
+
+  dict = PyDict_New();
+  if (dict == NULL) {
+    return NULL;
+  }
+
+  for (i = 0; i < self->erg.signal_count; i++) {
+    const ERGSignal *signal = &self->erg.signals[i];
+    PyObject *unit = PyUnicode_FromString(signal->unit ? signal->unit : "");
+    if (unit == NULL) {
+      Py_DECREF(dict);
+      return NULL;
+    }
+    if (PyDict_SetItemString(dict, signal->name, unit) < 0) {
+      Py_DECREF(unit);
+      Py_DECREF(dict);
+      return NULL;
+    }
+    Py_DECREF(unit);
+  }
+
+  return dict;
+}
+
 /* Method definitions */
 static PyMethodDef ERG_methods[] = {
     {"get_signal", (PyCFunction)ERG_get_signal, METH_VARARGS,
      "Get signal data by name as numpy array"},
     {"get_signal_info", (PyCFunction)ERG_get_signal_info, METH_VARARGS,
      "Get signal metadata by name"},
+    {"get_unit", (PyCFunction)ERG_get_unit, METH_VARARGS,
+     "Get unit string for signal by name"},
+    {"list_signals", (PyCFunction)ERG_list_signals, METH_NOARGS,
+     "List all signal names in the file"},
+    {"get_units", (PyCFunction)ERG_get_units, METH_NOARGS,
+     "Get dictionary mapping signal names to units"},
     {NULL}};
 
 /* Property definitions */

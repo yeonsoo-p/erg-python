@@ -22,6 +22,9 @@ class ERG:
     binary result files from CarMaker simulations. The file is automatically
     parsed upon initialization. Uses memory-mapped I/O for efficient access.
 
+    Instances are cached by filepath - creating multiple ERG objects with the
+    same filepath will return the same cached instance.
+
     Attributes:
         signal_names (list[str]): List of all available signal names
         sample_count (int): Number of samples (rows) in the file
@@ -33,6 +36,24 @@ class ERG:
         >>> velocity = erg["Car.v"]  # Dictionary-style access
         >>> signals = [erg[name] for name in ["Time", "Car.v", "Car.ax"]]
     """
+
+    _instances: dict[Path, "ERG"] = {}
+
+    def __new__(cls, filepath: str | Path):
+        """
+        Create or return cached ERG instance.
+
+        Args:
+            filepath: Path to the .erg file (string or Path object)
+
+        Returns:
+            ERG instance (cached if filepath was previously opened)
+        """
+        filepath = Path(filepath).resolve()
+        if filepath not in cls._instances:
+            instance = super().__new__(cls)
+            cls._instances[filepath] = instance
+        return cls._instances[filepath]
 
     def __init__(self, filepath: str | Path):
         """
@@ -48,7 +69,9 @@ class ERG:
             FileNotFoundError: If the ERG file or its .info file is not found
             RuntimeError: If the file cannot be parsed
         """
-        self._erg = _erg_c.ERG(filepath)
+        # Only initialize if not already initialized (for cached instances)
+        if not hasattr(self, "_erg"):
+            self._erg = _erg_c.ERG(filepath)
 
     def get_signal(self, signal_name: str) -> np.ndarray:
         """
@@ -104,6 +127,55 @@ class ERG:
             >>> print(f"Unit: {info['unit']}, Type: {info['type']}")
         """
         return self._erg.get_signal_info(signal_name)
+
+    def get_unit(self, signal_name: str) -> str:
+        """
+        Get the unit string for a signal.
+
+        Args:
+            signal_name: Name of the signal
+
+        Returns:
+            Unit string (e.g., "m/s", "s", "m/s^2")
+
+        Raises:
+            KeyError: If the signal name is not found
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> unit = erg.get_unit("Car.v")
+            >>> print(f"Velocity unit: {unit}")
+        """
+        return self._erg.get_unit(signal_name)
+
+    def list_signals(self) -> list[str]:
+        """
+        List all signal names in the file.
+
+        Returns:
+            List of signal name strings
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> signals = erg.list_signals()
+            >>> print(f"Found {len(signals)} signals")
+        """
+        return self._erg.list_signals()
+
+    def get_units(self) -> dict[str, str]:
+        """
+        Get all signal units as a dictionary.
+
+        Returns:
+            Dictionary mapping signal names to unit strings
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> units = erg.get_units()
+            >>> print(f"Time unit: {units['Time']}")
+            >>> print(f"Velocity unit: {units['Car.v']}")
+        """
+        return self._erg.get_units()
 
     @property
     def signal_names(self) -> list[str]:
