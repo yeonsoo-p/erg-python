@@ -105,7 +105,9 @@ static void ERG_dealloc(ERGObject *self) {
 /* ERG.get_signal(name) -> numpy array */
 static PyObject *ERG_get_signal(ERGObject *self, PyObject *args) {
   const char *signal_name;
-  double *data;
+  void *data;
+  const ERGSignal *signal_info;
+  int numpy_type;
 
   if (!self->parsed) {
     PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
@@ -116,18 +118,61 @@ static PyObject *ERG_get_signal(ERGObject *self, PyObject *args) {
     return NULL;
   }
 
-  /* Get signal data as double */
-  Py_BEGIN_ALLOW_THREADS;
-  data = erg_get_signal_as_double(&self->erg, signal_name);
-  Py_END_ALLOW_THREADS;
+  /* Get signal info to determine type */
+  signal_info = erg_get_signal_info(&self->erg, signal_name);
+  if (signal_info == NULL) {
+    PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
+    return NULL;
+  }
+
+  /* Get signal data (returns void* in native type with scaling applied) */
+  data = erg_get_signal(&self->erg, signal_name);
   if (data == NULL) {
     PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
     return NULL;
   }
 
-  /* Create NumPy array directly from C data (much faster than list approach) */
+  /* Map ERG type to NumPy type */
+  switch (signal_info->type) {
+    case ERG_FLOAT:
+      numpy_type = NPY_FLOAT;
+      break;
+    case ERG_DOUBLE:
+      numpy_type = NPY_DOUBLE;
+      break;
+    case ERG_INT:
+      numpy_type = NPY_INT32;
+      break;
+    case ERG_UINT:
+      numpy_type = NPY_UINT32;
+      break;
+    case ERG_SHORT:
+      numpy_type = NPY_INT16;
+      break;
+    case ERG_USHORT:
+      numpy_type = NPY_UINT16;
+      break;
+    case ERG_CHAR:
+      numpy_type = NPY_INT8;
+      break;
+    case ERG_UCHAR:
+      numpy_type = NPY_UINT8;
+      break;
+    case ERG_LONGLONG:
+      numpy_type = NPY_INT64;
+      break;
+    case ERG_ULONGLONG:
+      numpy_type = NPY_UINT64;
+      break;
+    default:
+      free(data);
+      PyErr_SetString(PyExc_RuntimeError, "Unsupported signal data type");
+      return NULL;
+  }
+
+  /* Create NumPy array directly from C data with native type */
   npy_intp dims[1] = {(npy_intp)self->erg.sample_count};
-  PyObject *array = PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, data);
+  PyObject *array = PyArray_SimpleNewFromData(1, dims, numpy_type, data);
 
   if (array == NULL) {
     free(data);
@@ -139,103 +184,6 @@ static PyObject *ERG_get_signal(ERGObject *self, PyObject *args) {
   PyArray_ENABLEFLAGS((PyArrayObject *)array, NPY_ARRAY_OWNDATA);
 
   return array;
-}
-
-/* ERG.get_signals(names) -> dict */
-static PyObject *ERG_get_signals(ERGObject *self, PyObject *args) {
-  PyObject *name_list;
-  PyObject *result;
-  Py_ssize_t num_signals;
-  const char **signal_names = NULL;
-  double **out_signals = NULL;
-  Py_ssize_t i;
-
-  if (!self->parsed) {
-    PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
-    return NULL;
-  }
-
-  if (!PyArg_ParseTuple(args, "O!", &PyList_Type, &name_list)) {
-    return NULL;
-  }
-
-  num_signals = PyList_Size(name_list);
-  if (num_signals == 0) {
-    return PyDict_New();
-  }
-
-  /* Allocate arrays */
-  signal_names = (const char **)malloc(num_signals * sizeof(char *));
-  out_signals = (double **)malloc(num_signals * sizeof(double *));
-
-  if (signal_names == NULL || out_signals == NULL) {
-    free(signal_names);
-    free(out_signals);
-    return PyErr_NoMemory();
-  }
-
-  /* Extract signal names from list */
-  for (i = 0; i < num_signals; i++) {
-    PyObject *item = PyList_GetItem(name_list, i);
-    if (!PyUnicode_Check(item)) {
-      free(signal_names);
-      free(out_signals);
-      PyErr_SetString(PyExc_TypeError, "Signal names must be strings");
-      return NULL;
-    }
-    signal_names[i] = PyUnicode_AsUTF8(item);
-  }
-
-  /* Get signals in batch */
-  Py_BEGIN_ALLOW_THREADS;
-  erg_get_signals_batch_as_double(&self->erg, signal_names, num_signals,
-                                  out_signals);
-  Py_END_ALLOW_THREADS;
-
-  /* Create result tuple */
-  result = PyTuple_New(num_signals);
-  if (result == NULL) {
-    goto cleanup;
-  }
-
-  /* Create NumPy arrays directly from C data (same as get_signal) */
-  for (i = 0; i < num_signals; i++) {
-    if (out_signals[i] != NULL) {
-      /* Create NumPy array directly from C data */
-      npy_intp dims[1] = {(npy_intp)self->erg.sample_count};
-      PyObject *array = PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, out_signals[i]);
-
-      if (array == NULL) {
-        free(out_signals[i]);
-        goto cleanup;
-      }
-
-      /* Set the array to own the data so it gets freed when array is destroyed */
-      PyArray_ENABLEFLAGS((PyArrayObject *)array, NPY_ARRAY_OWNDATA);
-
-      /* Add to result tuple */
-      PyTuple_SET_ITEM(result, i, array);
-    } else {
-      /* Signal not found, add None */
-      Py_INCREF(Py_None);
-      PyTuple_SET_ITEM(result, i, Py_None);
-    }
-  }
-
-  free(signal_names);
-  free(out_signals);
-  return result;
-
-cleanup:
-  for (i = 0; i < num_signals; i++) {
-    if (out_signals[i] != NULL) {
-      free(out_signals[i]);
-    }
-  }
-  free(signal_names);
-  free(out_signals);
-  Py_XDECREF(result);
-  return NULL;
 }
 
 /* ERG.signal_names property */
@@ -357,8 +305,6 @@ static PyObject *ERG_get_signal_info(ERGObject *self, PyObject *args) {
 static PyMethodDef ERG_methods[] = {
     {"get_signal", (PyCFunction)ERG_get_signal, METH_VARARGS,
      "Get signal data by name as numpy array"},
-    {"get_signals", (PyCFunction)ERG_get_signals, METH_VARARGS,
-     "Get multiple signals as tuple of numpy arrays (batch operation)"},
     {"get_signal_info", (PyCFunction)ERG_get_signal_info, METH_VARARGS,
      "Get signal metadata by name"},
     {NULL}};

@@ -47,6 +47,7 @@ typedef struct {
     double       offset;    /* Scaling offset */
 } ERGSignal;
 
+
 /**
  * Main ERG file structure
  * Uses memory-mapped I/O for efficient access without keeping entire file in memory
@@ -96,10 +97,10 @@ void erg_init(ERG* erg, const char* erg_file_path);
 void erg_parse(ERG* erg);
 
 /**
- * Get signal data by name (returns raw typed data)
+ * Get signal data by name (returns raw typed data with scaling applied)
  * Returns data in its native type (float*, double*, int*, etc.)
- * Uses memory-mapped I/O with automatic multi-threading when beneficial
- * Thread count is determined adaptively in erg_init() based on sample count
+ * Applies scaling (factor/offset) in-place using native type if needed
+ * Uses memory-mapped I/O for efficient zero-copy access
  * Allocates new array - caller must free
  *
  * @param erg Pointer to ERG structure
@@ -110,18 +111,6 @@ void erg_parse(ERG* erg);
  *         ERG_FLOAT -> float*, ERG_DOUBLE -> double*, ERG_INT -> int*, etc.
  */
 void* erg_get_signal(const ERG* erg, const char* signal_name);
-
-/**
- * Get signal data converted to double with scaling applied
- * Convenience function that reads raw data and applies factor/offset
- * Allocates new array - caller must free
- *
- * @param erg Pointer to ERG structure
- * @param signal_name Name of signal (e.g., "Time", "Car.v")
- * @return Pointer to newly allocated double array, NULL if signal not found
- *         Length is erg->sample_count
- */
-double* erg_get_signal_as_double(const ERG* erg, const char* signal_name);
 
 /**
  * Get signal metadata by name
@@ -145,34 +134,6 @@ int erg_find_signal_index(const ERG* erg, const char* signal_name);
  * Free all memory associated with ERG structure
  */
 void erg_free(ERG* erg);
-
-/**
- * Batch extract multiple signals (sequential)
- * Returns raw typed data for each signal
- *
- * @param erg Pointer to ERG structure
- * @param signal_names Array of signal names to extract
- * @param num_signals Number of signals to extract
- * @param out_signals Array of output pointers (will be filled with newly allocated arrays)
- *                    Caller must free each non-NULL pointer
- *                    Each pointer will be NULL if signal not found
- */
-void erg_get_signals_batch(const ERG* erg, const char** signal_names,
-                           size_t num_signals, void** out_signals);
-
-/**
- * Batch extract multiple signals as double (sequential)
- * Converts all signals to double and applies scaling
- *
- * @param erg Pointer to ERG structure
- * @param signal_names Array of signal names to extract
- * @param num_signals Number of signals to extract
- * @param out_signals Array of output double* pointers
- *                    Caller must free each non-NULL pointer
- *                    Each pointer will be NULL if signal not found
- */
-void erg_get_signals_batch_as_double(const ERG* erg, const char** signal_names,
-                                     size_t num_signals, double** out_signals);
 
 #ifdef __cplusplus
 }

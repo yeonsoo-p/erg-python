@@ -79,31 +79,32 @@ def test_basic():
         info = erg.get_signal_info("Time")
         print(f"Time signal info: {info}")
 
-    # Get multiple signals
+    # Get multiple signals using list comprehension
     available_signals = erg.signal_names[:5]
-    print(f"\nGetting batch signals: {available_signals}")
+    print(f"\nGetting multiple signals: {available_signals}")
 
-    # Time cold batch retrieval
+    # Time cold retrieval
     start = time_ns()
-    signals = erg.get_signals(available_signals)
+    signals = [erg.get_signal(name) for name in available_signals]
     end = time_ns()
     batch_cold_time = end - start
 
     for name, data in zip(available_signals, signals):
-        print(f"  {name}: type={type(data).__name__}, length={len(data)}")
+        print(f"  {name}: type={type(data).__name__}, dtype={data.dtype}, length={len(data)}")
 
-    print(f"Batch cold retrieval time: {batch_cold_time:,} ns ({batch_cold_time / 1_000_000:.3f} ms)")
+    print(f"Cold retrieval time: {batch_cold_time:,} ns ({batch_cold_time / 1_000_000:.3f} ms)")
+    print(f"Average per signal: {batch_cold_time / len(available_signals):,.0f} ns")
 
-    # Time warm batch retrieval (all cached)
+    # Time warm retrieval (all cached)
     start = time_ns()
-    signals = erg.get_signals(available_signals)
+    signals = [erg[name] for name in available_signals]  # Using __getitem__
     end = time_ns()
     batch_warm_time = end - start
-    print(f"Batch warm retrieval time: {batch_warm_time:,} ns ({batch_warm_time / 1_000:.3f} µs)")
+    print(f"Warm retrieval time: {batch_warm_time:,} ns ({batch_warm_time / 1_000:.3f} µs)")
     print(f"Average per signal (warm): {batch_warm_time / len(available_signals):,.0f} ns")
 
     # Plot signals if they exist
-    plot_signals = ["Car.ax", "Car.v", "Vhcl.tRoad"]
+    plot_signals = ["Car.ax", "Car.v", "Car.Distance"]
     missing_signals = [s for s in plot_signals if s not in erg.signal_names]
 
     if missing_signals:
