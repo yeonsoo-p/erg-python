@@ -86,11 +86,33 @@ static int ERG_init(ERGObject* self, PyObject* args, PyObject* kwds) {
     self->initialized = 1;
 
     /* Auto-parse the file */
+    ERGError err;
     Py_BEGIN_ALLOW_THREADS;
-    erg_parse(&self->erg);
+    err = erg_parse(&self->erg);
     Py_END_ALLOW_THREADS;
-    self->parsed = 1;
 
+    if (err != ERG_OK) {
+        const char* err_msg = erg_error_string(err);
+
+        /* Get underlying error details if available */
+        if (err == ERG_MMAP_ERROR || err == ERG_INFOFILE_ERROR) {
+            Error underlying = erg_get_error(&self->erg);
+            if (err == ERG_MMAP_ERROR) {
+                PyErr_Format(PyExc_RuntimeError,
+                    "Failed to parse ERG file: %s (MMap error: %s)",
+                    err_msg, mmap_error_string((MMapError)underlying));
+            } else {
+                PyErr_Format(PyExc_RuntimeError,
+                    "Failed to parse ERG file: %s (InfoFile error: %s)",
+                    err_msg, infofile_error_string((InfoFileError)underlying));
+            }
+        } else {
+            PyErr_Format(PyExc_RuntimeError, "Failed to parse ERG file: %s", err_msg);
+        }
+        return -1;
+    }
+
+    self->parsed = 1;
     return 0;
 }
 
