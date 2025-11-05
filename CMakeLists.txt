@@ -40,7 +40,7 @@ target_link_libraries(erg_python PRIVATE
 )
 
 # Set compiler flags
-target_compile_options(erg_python PRIVATE -Wall -Wextra -mavx2 ${OpenMP_C_FLAGS})
+target_compile_options(erg_python PRIVATE -Wall -Wextra ${OpenMP_C_FLAGS})
 
 # Set output directory
 set_target_properties(erg_python PROPERTIES
