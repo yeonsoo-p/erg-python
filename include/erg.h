@@ -2,9 +2,9 @@
 #define ERG_H
 
 #include <infofile.h>
-#include <utils.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <utils.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,7 +31,14 @@ typedef enum {
     ERG_USHORT,    // 2 bytes unsigned
     ERG_CHAR,      // 1 byte signed
     ERG_UCHAR,     // 1 byte unsigned
-    ERG_BYTES,     // Raw bytes (1-8)
+    ERG_1BYTE,     // 1 byte
+    ERG_2BYTES,    // 2 bytes
+    ERG_3BYTES,    // 3 bytes
+    ERG_4BYTES,    // 4 bytes
+    ERG_5BYTES,    // 5 bytes
+    ERG_6BYTES,    // 6 bytes
+    ERG_7BYTES,    // 7 bytes
+    ERG_8BYTES,    // 8 bytes
     ERG_UNKNOWN
 } ERGDataType;
 
@@ -39,17 +46,17 @@ typedef enum {
  * ERG Error Codes (300-399 range)
  */
 typedef enum {
-    ERG_OK = 0,                      /* Success */
-    ERG_INFOFILE_ERROR = 300,        /* Info file parsing failed - check erg_get_infofile_error() */
-    ERG_MMAP_ERROR = 301,            /* Memory mapping failed - check erg_get_mmap_error() */
-    ERG_INVALID_FORMAT = 302,        /* Missing required metadata (e.g., File.ByteOrder) */
+    ERG_OK                     = 0,   /* Success */
+    ERG_INFOFILE_ERROR         = 300, /* Info file parsing failed - check erg_get_infofile_error() */
+    ERG_MMAP_ERROR             = 301, /* Memory mapping failed - check erg_get_mmap_error() */
+    ERG_INVALID_FORMAT         = 302, /* Missing required metadata (e.g., File.ByteOrder) */
     ERG_UNSUPPORTED_BYTE_ORDER = 303, /* Big-endian files not supported */
-    ERG_UNKNOWN_DATA_TYPE = 304,     /* Signal has unrecognized data type */
-    ERG_NO_SIGNALS_FOUND = 305,      /* No signals in ERG file */
-    ERG_FILE_TOO_SMALL = 306,        /* File smaller than minimum header size */
-    ERG_DATA_CORRUPTION = 307,       /* Data size / row size mismatch */
-    ERG_ALLOCATION_FAILED = 308,     /* Memory allocation failed */
-    ERG_INTERNAL_ERROR = 309         /* Unexpected internal state */
+    ERG_UNKNOWN_DATA_TYPE      = 304, /* Signal has unrecognized data type */
+    ERG_NO_SIGNALS_FOUND       = 305, /* No signals in ERG file */
+    ERG_FILE_TOO_SMALL         = 306, /* File smaller than minimum header size */
+    ERG_DATA_CORRUPTION        = 307, /* Data size / row size mismatch */
+    ERG_ALLOCATION_FAILED      = 308, /* Memory allocation failed */
+    ERG_INTERNAL_ERROR         = 309  /* Unexpected internal state */
 } ERGError;
 
 /**
@@ -74,9 +81,9 @@ typedef struct {
 typedef struct {
     void* impl; /* Internal C++ implementation */
 
-    char*      erg_path;     /* Path to .erg file */
-    InfoFile   info;         /* Parsed .erg.info file */
-    MappedFile mapped_file;  /* Memory-mapped ERG file data */
+    char*      erg_path;    /* Path to .erg file */
+    InfoFile   info;        /* Parsed .erg.info file */
+    MappedFile mapped_file; /* Memory-mapped ERG file data */
 
     ERGSignal* signals;      /* Array of signal metadata */
     size_t     signal_count; /* Number of signals */

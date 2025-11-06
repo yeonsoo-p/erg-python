@@ -267,7 +267,7 @@ def test_performance_comparison():
     # Cold read (all signals, first access)
     start = time_ns()
     erg1_first = erg1[signal_names[0]]
-    erg1_last = erg1[signal_names[-1]]
+    erg1_last = erg1[signal_names[-2]]
     cold_time_1 = time_ns() - start
     mem_after_cold_1 = get_memory_usage_mb()
     print(f"Cold read:      {cold_time_1 / 1_000_000:>10.3f} ms")
@@ -276,7 +276,7 @@ def test_performance_comparison():
     # Hot read (all signals, cached)
     start = time_ns()
     erg1_first = erg1[signal_names[0]]
-    erg1_last = erg1[signal_names[-1]]
+    erg1_last = erg1[signal_names[-2]]
     hot_time_1 = time_ns() - start
     print(f"Hot read:       {hot_time_1 / 1_000_000:>10.3f} ms")
 
@@ -302,7 +302,7 @@ def test_performance_comparison():
     # Cold read (get all at once, first access via field name)
     start = time_ns()
     erg2_first = erg2[signal_names[0]]
-    erg2_last = erg2[signal_names[-1]]
+    erg2_last = erg2[signal_names[-2]]
     cold_time_2 = time_ns() - start
     mem_after_cold_2 = get_memory_usage_mb()
     print(f"Cold read:      {cold_time_2 / 1_000_000:>10.3f} ms")
@@ -311,7 +311,7 @@ def test_performance_comparison():
     # Hot read (get all at once, cached/repeated)
     start = time_ns()
     erg2_first = erg2[signal_names[0]]
-    erg2_last = erg2[signal_names[-1]]
+    erg2_last = erg2[signal_names[-2]]
     hot_time_2 = time_ns() - start
     print(f"Hot read:       {hot_time_2 / 1_000_000:>10.3f} ms")
 
@@ -334,7 +334,7 @@ def test_performance_comparison():
     # Cold read (all signals, first access)
     start = time_ns()
     erg_cm_first = erg_cm.get(signal_names[0]).samples
-    erg_cm_last = erg_cm.get(signal_names[-1]).samples
+    erg_cm_last = erg_cm.get(signal_names[-2]).samples
     cold_time_3 = time_ns() - start
     mem_after_cold_3 = get_memory_usage_mb()
     print(f"Cold read:      {cold_time_3 / 1_000_000:>10.3f} ms")
@@ -343,7 +343,7 @@ def test_performance_comparison():
     # Hot read (all signals, cached)
     start = time_ns()
     erg_cm_first = erg_cm.get(signal_names[0]).samples
-    erg_cm_last = erg_cm.get(signal_names[-1]).samples
+    erg_cm_last = erg_cm.get(signal_names[-2]).samples
     hot_time_3 = time_ns() - start
     print(f"Hot read:       {hot_time_3 / 1_000_000:>10.3f} ms")
 

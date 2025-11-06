@@ -317,7 +317,7 @@ static PyObject* ERG_get_all_signals(ERGObject* self, PyObject* Py_UNUSED(args))
     }
 
     /* Build dtype using dict format: {'names': [...], 'formats': [...], 'offsets': [...]} */
-    names_list = PyList_New(self->erg.signal_count);
+    names_list   = PyList_New(self->erg.signal_count);
     formats_list = PyList_New(self->erg.signal_count);
     offsets_list = PyList_New(self->erg.signal_count);
 
@@ -367,16 +367,42 @@ static PyObject* ERG_get_all_signals(ERGObject* self, PyObject* Py_UNUSED(args))
         case ERG_ULONGLONG:
             dtype_code = "<u8";
             break;
+        /* Raw byte types - treat as void (raw bytes) */
+        case ERG_1BYTE:
+            dtype_code = "V1";  /* 1 byte of raw data */
+            break;
+        case ERG_2BYTES:
+            dtype_code = "V2";  /* 2 bytes of raw data */
+            break;
+        case ERG_3BYTES:
+            dtype_code = "V3";  /* 3 bytes of raw data */
+            break;
+        case ERG_4BYTES:
+            dtype_code = "V4";  /* 4 bytes of raw data */
+            break;
+        case ERG_5BYTES:
+            dtype_code = "V5";  /* 5 bytes of raw data */
+            break;
+        case ERG_6BYTES:
+            dtype_code = "V6";  /* 6 bytes of raw data */
+            break;
+        case ERG_7BYTES:
+            dtype_code = "V7";  /* 7 bytes of raw data */
+            break;
+        case ERG_8BYTES:
+            dtype_code = "V8";  /* 8 bytes of raw data */
+            break;
         default:
             Py_DECREF(names_list);
             Py_DECREF(formats_list);
             Py_DECREF(offsets_list);
+            printf("Unsupported signal type %d for signal %s\n", signal->type, signal->name);
             PyErr_SetString(PyExc_RuntimeError, "Unsupported signal data type");
             return NULL;
         }
 
         /* Add name, format, and offset */
-        name = PyUnicode_FromString(signal->name);
+        name       = PyUnicode_FromString(signal->name);
         format_str = PyUnicode_FromString(dtype_code);
         offset_int = PyLong_FromSize_t(signal->data_offset);
 
@@ -426,7 +452,7 @@ static PyObject* ERG_get_all_signals(ERGObject* self, PyObject* Py_UNUSED(args))
     data_ptr = (const char*)self->erg.mapped_file.data + 16; /* Skip 16-byte header */
 
     array = PyArray_NewFromDescr(&PyArray_Type, dtype, 1, shape, NULL,
-                                  (void*)data_ptr, NPY_ARRAY_DEFAULT, NULL);
+                                 (void*)data_ptr, NPY_ARRAY_DEFAULT, NULL);
     if (array == NULL) {
         return NULL;
     }
@@ -523,16 +549,36 @@ static PyObject* ERG_get_signal_types(ERGObject* self, PyObject* Py_UNUSED(args)
 
         /* Map ERG type to NumPy type */
         switch (signal->type) {
-        case ERG_FLOAT:    numpy_type = NPY_FLOAT; break;
-        case ERG_DOUBLE:   numpy_type = NPY_DOUBLE; break;
-        case ERG_INT:      numpy_type = NPY_INT32; break;
-        case ERG_UINT:     numpy_type = NPY_UINT32; break;
-        case ERG_SHORT:    numpy_type = NPY_INT16; break;
-        case ERG_USHORT:   numpy_type = NPY_UINT16; break;
-        case ERG_CHAR:     numpy_type = NPY_INT8; break;
-        case ERG_UCHAR:    numpy_type = NPY_UINT8; break;
-        case ERG_LONGLONG: numpy_type = NPY_INT64; break;
-        case ERG_ULONGLONG: numpy_type = NPY_UINT64; break;
+        case ERG_FLOAT:
+            numpy_type = NPY_FLOAT;
+            break;
+        case ERG_DOUBLE:
+            numpy_type = NPY_DOUBLE;
+            break;
+        case ERG_INT:
+            numpy_type = NPY_INT32;
+            break;
+        case ERG_UINT:
+            numpy_type = NPY_UINT32;
+            break;
+        case ERG_SHORT:
+            numpy_type = NPY_INT16;
+            break;
+        case ERG_USHORT:
+            numpy_type = NPY_UINT16;
+            break;
+        case ERG_CHAR:
+            numpy_type = NPY_INT8;
+            break;
+        case ERG_UCHAR:
+            numpy_type = NPY_UINT8;
+            break;
+        case ERG_LONGLONG:
+            numpy_type = NPY_INT64;
+            break;
+        case ERG_ULONGLONG:
+            numpy_type = NPY_UINT64;
+            break;
         default:
             Py_DECREF(dict);
             PyErr_SetString(PyExc_RuntimeError, "Unsupported signal data type");
@@ -693,7 +739,7 @@ static PyObject* ERG_get_signal_index(ERGObject* self, PyObject* args) {
 
 /* Method definitions */
 static PyMethodDef ERG_methods[] = {
-    {"get_signal", (PyCFunction)(void(*)(void))ERG_get_signal, METH_FASTCALL,
+    {"get_signal", (PyCFunction)(void (*)(void))ERG_get_signal, METH_FASTCALL,
      "Get signal data by name as numpy array"},
     {"get_all_signals", (PyCFunction)ERG_get_all_signals, METH_NOARGS,
      "Get all signals as structured numpy array (zero-copy view)"},

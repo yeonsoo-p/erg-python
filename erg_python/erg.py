@@ -57,8 +57,9 @@ class ERG:
         """
         Initialize and parse an ERG file.
 
-        The file is automatically parsed upon initialization, and all metadata
-        is loaded into memory. Signal data is loaded on-demand.
+        The file is automatically parsed upon initialization. All metadata and
+        signal data are memory-mapped as a structured array for zero-copy access.
+        The structured array cache is eagerly loaded during initialization.
 
         Args:
             filepath: Path to the .erg file (string or Path object)
@@ -87,8 +88,8 @@ class ERG:
         Returns the signal data as a NumPy array in its native data type
         (float32, float64, int32, etc.) with scaling factors already applied.
 
-        If get_all_signals() has been called, retrieves data from the cached
-        structured array. Otherwise, fetches directly from C.
+        This method retrieves raw data from the memory-mapped structured array
+        cache (loaded during initialization) and applies scaling factors.
 
         Args:
             signal_name: Name of the signal (e.g., "Time", "Car.v")
@@ -104,7 +105,7 @@ class ERG:
             >>> velocity = erg.get_signal("Car.v")
             >>> print(f"Max velocity: {max(velocity):.2f}, dtype: {velocity.dtype}")
         """
-        # Check if structured array cache exists
+        # Extract raw data from memory-mapped structured array cache
         try:
             raw_data = self._struct_array_cache[signal_name]
         except ValueError as e:
@@ -128,22 +129,22 @@ class ERG:
         Get all signals as a structured NumPy array.
 
         Returns a structured array where each field is a signal with its native
-        data type. This is a zero-copy view of the memory-mapped data with raw
-        values (no scaling applied).
+        data type. This is a zero-copy memory-mapped view of the raw ERG file data
+        with values in their native format (no scaling applied).
+
+        This method is automatically called during __init__, so the structured array
+        is always available. Subsequent calls return the cached array instantly.
 
         IMPORTANT: Direct field access (data['signal_name']) returns RAW unscaled
         values from the file. Use get_signal('signal_name') to get properly scaled
         values with factor and offset applied.
 
-        The result is cached for future get_signal() calls, which will then use
-        this structured array as the data source and apply scaling dynamically.
-
         Returns:
             Structured NumPy array with shape (sample_count,)
 
         Example:
-            >>> erg = ERG("simulation.erg")
-            >>> data = erg.get_all_signals()  # Returns structured array
+            >>> erg = ERG("simulation.erg")  # get_all_signals() called automatically
+            >>> data = erg.get_all_signals()  # Returns cached structured array
             >>> print(f"Shape: {data.shape}")  # (samples,)
             >>> print(f"Fields: {data.dtype.names}")  # ('Time', 'Car.v', ...)
             >>> time_raw = data['Time']  # Direct access: raw unscaled data
