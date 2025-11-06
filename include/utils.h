@@ -50,6 +50,40 @@ typedef enum {
 /* Get human-readable error message for MMapError */
 const char* mmap_error_string(MMapError error);
 
+/* ============================================================================
+ * Memory-Mapped File Utilities (C API)
+ * ============================================================================ */
+
+/**
+ * Memory-mapped file handle for cross-platform file mapping
+ * Pure C structure - accessible from both C and C++ code
+ */
+typedef struct {
+    void*  data; /* Pointer to mapped memory */
+    size_t size; /* Size of mapped region */
+
+#ifdef _WIN32
+    HANDLE file_handle;
+    HANDLE mapping_handle;
+#else
+    int file_descriptor;
+#endif
+} MappedFile;
+
+/**
+ * Initialize a MappedFile structure to default values
+ */
+static inline void mmap_init(MappedFile* mapped) {
+    mapped->data = NULL;
+    mapped->size = 0;
+#ifdef _WIN32
+    mapped->file_handle = INVALID_HANDLE_VALUE;
+    mapped->mapping_handle = NULL;
+#else
+    mapped->file_descriptor = -1;
+#endif
+}
+
 #ifdef __cplusplus
 }
 
@@ -74,39 +108,6 @@ struct StringLess {
     using is_transparent = void;
     bool operator()(std::string_view lhs, std::string_view rhs) const {
         return lhs < rhs;
-    }
-};
-
-/* ============================================================================
- * Memory-Mapped File Utilities
- * ============================================================================ */
-
-/**
- * Memory-mapped file handle for cross-platform file mapping
- * Encapsulates platform-specific memory mapping details
- */
-struct MappedFile {
-    void*  data; /* Pointer to mapped memory */
-    size_t size; /* Size of mapped region */
-
-#ifdef _WIN32
-    HANDLE file_handle;
-    HANDLE mapping_handle;
-#else
-    int file_descriptor;
-#endif
-
-    MappedFile()
-        : data(nullptr),
-          size(0)
-#ifdef _WIN32
-          ,
-          file_handle(INVALID_HANDLE_VALUE), mapping_handle(nullptr)
-#else
-          ,
-          file_descriptor(-1)
-#endif
-    {
     }
 };
 
@@ -140,7 +141,7 @@ inline MMapError mmap_open(const char* filename, MappedFile* mapped) {
         return MMAP_FILE_SIZE_FAILED;
     }
 
-    mapped->size = static_cast<size_t>(file_size.QuadPart);
+    mapped->size = (size_t)file_size.QuadPart;
 
     mapped->mapping_handle = CreateFileMappingA(
         mapped->file_handle,
@@ -182,7 +183,7 @@ inline MMapError mmap_open(const char* filename, MappedFile* mapped) {
         return MMAP_FILE_SIZE_FAILED;
     }
 
-    mapped->size = static_cast<size_t>(st.st_size);
+    mapped->size = (size_t)st.st_size;
 
     mapped->data = mmap(
         NULL,
@@ -222,7 +223,7 @@ inline void mmap_close(MappedFile* mapped) {
             close(mapped->file_descriptor);
         }
 #endif
-        mapped->data = nullptr;
+        mapped->data = NULL;
         mapped->size = 0;
     }
 }

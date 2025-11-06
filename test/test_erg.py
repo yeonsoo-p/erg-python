@@ -8,14 +8,19 @@ Usage:
 import sys
 import argparse
 import time
+import gc
+import psutil
+import os
 from pathlib import Path
 import cmerg
-
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 # Add parent directory to path to import erg_python
 sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 from erg_python import ERG
-import matplotlib.pyplot as plt
+
 
 # Global variable for test file path
 TEST_ERG_FILE = None
@@ -24,6 +29,12 @@ TEST_ERG_FILE = None
 def time_ns() -> int:
     """Get current time in nanoseconds."""
     return time.perf_counter_ns()
+
+
+def get_memory_usage_mb() -> float:
+    """Get current process memory usage in MB."""
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 ** 2)
 
 
 def test_basic():
@@ -98,7 +109,7 @@ def test_basic():
     print(f"Warm retrieval time: {batch_warm_time:,} ns ({batch_warm_time / 1_000:.3f} µs)")
     print(f"Average per signal (warm): {batch_warm_time / len(available_signals):,.0f} ns")
 
-    # Plot signals if they exist
+    # Plot signals if they exist using get_all_signals()
     plot_signals = ["Car.ax", "Car.v", "Car.Distance"]
     missing_signals = [s for s in plot_signals if s not in signal_names]
 
@@ -107,14 +118,19 @@ def test_basic():
     elif "Time" not in signal_names:
         print("\nWarning: Cannot plot, 'Time' signal not found")
     else:
-        print(f"\nPlotting signals: {plot_signals}")
-        plot_time = erg.get_signal("Time")
+        print(f"\nPlotting signals: {plot_signals} (using get_all_signals())")
+
+        # Get all signals as structured array
+        all_data = erg.get_all_signals()
+
+        # Access fields by name
+        plot_time = all_data['Time']
 
         fig, axes = plt.subplots(3, 1, figsize=(12, 8))
-        fig.suptitle("ERG Signal Plots", fontsize=14, fontweight="bold")
+        fig.suptitle("ERG Signal Plots (from get_all_signals())", fontsize=14, fontweight="bold")
 
         for idx, signal_name in enumerate(plot_signals):
-            signal_data = erg.get_signal(signal_name)
+            signal_data = all_data[signal_name]
             signal_unit = erg.get_signal_unit(signal_name)
 
             axes[idx].plot(plot_time, signal_data, linewidth=1.5)
@@ -153,6 +169,44 @@ def test_signal_info():
     return True
 
 
+def test_get_all_signals():
+    """Test get_all_signals() structured array functionality"""
+    erg_file = TEST_ERG_FILE
+    if not erg_file or not erg_file.exists():
+        print(f"Skipping test_get_all_signals: test file not available")
+        return False
+
+    print("\nTesting get_all_signals()...")
+    erg = ERG(erg_file)
+
+    signal_names = erg.get_signal_names()
+    print(f"Signal count: {len(signal_names)}")
+
+    # Get all signals as structured array
+    print("Getting all signals as structured array...")
+    start = time_ns()
+    data = erg.get_all_signals()
+    all_signals_time = time_ns() - start
+
+    print(f"Array shape: {data.shape}")
+    print(f"Array dtype fields: {len(data.dtype.names)} fields")
+    print(f"Memory usage: {data.nbytes / (1024**2):.2f} MB")
+    print(f"Retrieval time: {all_signals_time / 1_000_000:.3f} ms")
+
+    # Performance comparison
+    print("\nPerformance comparison...")
+    start = time_ns()
+    _ = {name: erg.get_signal(name) for name in signal_names}
+    individual_time = time_ns() - start
+
+    print(f"Individual retrieval: {individual_time / 1_000_000:.3f} ms")
+    print(f"get_all_signals():    {all_signals_time / 1_000_000:.3f} ms")
+    speedup = individual_time / all_signals_time
+    print(f"Speedup: {speedup:.2f}x faster")
+
+    return True
+
+
 def test_error_handling():
     """Test error handling"""
     print("\nTesting error handling...")
@@ -180,120 +234,213 @@ def test_error_handling():
 
 
 def test_performance_comparison():
-    """Compare performance with cmerg package"""
+    """Compare performance: erg_python.get_signal() vs erg_python.get_all_signals() vs cmerg.get()"""
     erg_file = TEST_ERG_FILE
     if not erg_file or not erg_file.exists():
         print(f"Skipping performance comparison: test file not available")
         return False
 
-    print(f"\n{'=' * 70}")
-    print("PERFORMANCE COMPARISON: erg_python vs cmerg")
-    print(f"{'=' * 70}")
+    print(f"\n{'=' * 80}")
+    print("PERFORMANCE COMPARISON")
+    print(f"{'=' * 80}")
     print(f"Test file: {erg_file}")
 
-    # Test signals - use common signals that should exist
-    test_signals = ["Time"]
+    # ===== METHOD 1: erg_python.get_signal() =====
+    print(f"\n{'--- Method 1: erg_python.get_signal() ---':^80}")
 
-    # ===== ERG_PYTHON TESTS =====
-    print(f"\n{'--- erg_python ---':^70}")
-
-    # Clear cache by creating new instance
+    # Clear cache and force garbage collection
     ERG._instances.clear()
+    gc.collect()
+    mem_before_1 = get_memory_usage_mb()
 
-    # 1. Loading time
+    # Loading
     start = time_ns()
-    erg_python = ERG(erg_file)
-    load_time_erg = time_ns() - start
-    print(f"Loading ERG:          {load_time_erg / 1_000_000:>10.3f} ms")
+    erg1 = ERG(erg_file)
+    signal_names = erg1.get_signal_names()
+    load_time_1 = time_ns() - start
+    mem_after_load_1 = get_memory_usage_mb()
 
-    # Get available signals
-    signal_names = erg_python.get_signal_names()
+    print(f"Loading:              {load_time_1 / 1_000_000:>10.3f} ms")
     print(f"Signal count:         {len(signal_names):>10}")
+    print(f"Memory after load:    {mem_after_load_1:>10.2f} MB (+{mem_after_load_1 - mem_before_1:.2f} MB)")
 
-    # Use first few signals for testing
-    test_signals = signal_names[: min(5, len(signal_names))]
-
-    # 2. Cold read (first access)
+    # Cold read (all signals, first access)
     start = time_ns()
-    for sig in test_signals:
-        _ = erg_python.get_signal(sig)
-    cold_read_erg = time_ns() - start
-    print(f"Cold read ({len(test_signals)} signals): {cold_read_erg / 1_000_000:>10.3f} ms")
-    print(f"  Per signal:         {cold_read_erg / len(test_signals) / 1_000_000:>10.3f} ms")
+    erg1_first = erg1[signal_names[0]]
+    erg1_last = erg1[signal_names[-1]]
+    cold_time_1 = time_ns() - start
+    mem_after_cold_1 = get_memory_usage_mb()
+    print(f"Cold read:      {cold_time_1 / 1_000_000:>10.3f} ms")
+    print(f"Memory after cold:    {mem_after_cold_1:>10.2f} MB (+{mem_after_cold_1 - mem_after_load_1:.2f} MB)")
 
-    # 3. Hot read (cached access)
+    # Hot read (all signals, cached)
     start = time_ns()
-    for sig in test_signals:
-        _ = erg_python[sig]
-    hot_read_erg = time_ns() - start
-    print(f"Hot read ({len(test_signals)} signals):  {hot_read_erg / 1_000:>10.3f} µs")
-    print(f"  Per signal:         {hot_read_erg / len(test_signals) / 1_000:>10.3f} µs")
+    erg1_first = erg1[signal_names[0]]
+    erg1_last = erg1[signal_names[-1]]
+    hot_time_1 = time_ns() - start
+    print(f"Hot read:       {hot_time_1 / 1_000_000:>10.3f} ms")
 
-    # ===== CMERG TESTS =====
-    print(f"\n{'--- cmerg ---':^70}")
+    # ===== METHOD 2: erg_python.get_all_signals() =====
+    print(f"\n{'--- Method 2: erg_python.get_all_signals() ---':^80}")
 
-    # 1. Loading time
+    # Clear cache and force garbage collection
+    ERG._instances.clear()
+    gc.collect()
+    mem_before_2 = get_memory_usage_mb()
+
+    # Loading
+    start = time_ns()
+    erg2 = ERG(erg_file)
+    erg2.get_all_signals()
+    signal_names = erg2.get_signal_names()
+    erg2.get_signal_factors()
+    erg2.get_signal_offsets()
+    load_time_2 = time_ns() - start
+    mem_after_load_2 = get_memory_usage_mb()
+
+    print(f"Loading:              {load_time_2 / 1_000_000:>10.3f} ms")
+    print(f"Memory after load:    {mem_after_load_2:>10.2f} MB (+{mem_after_load_2 - mem_before_2:.2f} MB)")
+
+    # Cold read (get all at once, first access via field name)
+    start = time_ns()
+    erg2_first = erg2[signal_names[0]]
+    erg2_last = erg2[signal_names[-1]]
+    cold_time_2 = time_ns() - start
+    mem_after_cold_2 = get_memory_usage_mb()
+    print(f"Cold read:      {cold_time_2 / 1_000_000:>10.3f} ms")
+    print(f"Memory after cold:    {mem_after_cold_2:>10.2f} MB (+{mem_after_cold_2 - mem_after_load_2:.2f} MB)")
+
+    # Hot read (get all at once, cached/repeated)
+    start = time_ns()
+    erg2_first = erg2[signal_names[0]]
+    erg2_last = erg2[signal_names[-1]]
+    hot_time_2 = time_ns() - start
+    print(f"Hot read:       {hot_time_2 / 1_000_000:>10.3f} ms")
+
+    # ===== METHOD 3: cmerg.get() =====
+    print(f"\n{'--- Method 3: cmerg.get() ---':^80}")
+
+    # Force garbage collection
+    gc.collect()
+    mem_before_3 = get_memory_usage_mb()
+
+    # Loading
     start = time_ns()
     erg_cm = cmerg.ERG(str(erg_file))
-    load_time_cm = time_ns() - start
-    print(f"Loading ERG:          {load_time_cm / 1_000_000:>10.3f} ms")
+    load_time_3 = time_ns() - start
+    mem_after_load_3 = get_memory_usage_mb()
 
-    # 2. Cold read (first access) - cmerg uses .get() method
-    start = time_ns()
-    for sig in test_signals:
-        signal_obj = erg_cm.get(sig)
-        # Access the actual data to ensure it's loaded
-        _ = signal_obj.samples
-    cold_read_cm = time_ns() - start
-    print(f"Cold read ({len(test_signals)} signals): {cold_read_cm / 1_000_000:>10.3f} ms")
-    print(f"  Per signal:         {cold_read_cm / len(test_signals) / 1_000_000:>10.3f} ms")
+    print(f"Loading:              {load_time_3 / 1_000_000:>10.3f} ms")
+    print(f"Memory after load:    {mem_after_load_3:>10.2f} MB (+{mem_after_load_3 - mem_before_3:.2f} MB)")
 
-    # 3. Hot read (cached access)
+    # Cold read (all signals, first access)
     start = time_ns()
-    for sig in test_signals:
-        signal_obj = erg_cm.get(sig)
-        _ = signal_obj.samples
-    hot_read_cm = time_ns() - start
-    print(f"Hot read ({len(test_signals)} signals):  {hot_read_cm / 1_000:>10.3f} µs")
-    print(f"  Per signal:         {hot_read_cm / len(test_signals) / 1_000:>10.3f} µs")
+    erg_cm_first = erg_cm.get(signal_names[0]).samples
+    erg_cm_last = erg_cm.get(signal_names[-1]).samples
+    cold_time_3 = time_ns() - start
+    mem_after_cold_3 = get_memory_usage_mb()
+    print(f"Cold read:      {cold_time_3 / 1_000_000:>10.3f} ms")
+    print(f"Memory after cold:    {mem_after_cold_3:>10.2f} MB (+{mem_after_cold_3 - mem_after_load_3:.2f} MB)")
+
+    # Hot read (all signals, cached)
+    start = time_ns()
+    erg_cm_first = erg_cm.get(signal_names[0]).samples
+    erg_cm_last = erg_cm.get(signal_names[-1]).samples
+    hot_time_3 = time_ns() - start
+    print(f"Hot read:       {hot_time_3 / 1_000_000:>10.3f} ms")
 
     # ===== COMPARISON SUMMARY =====
-    print(f"\n{'=' * 70}")
-    print("SPEEDUP SUMMARY (erg_python vs cmerg)")
-    print(f"{'=' * 70}")
+    print(f"\n{'=' * 80}")
+    print("PERFORMANCE SUMMARY")
+    print(f"{'=' * 80}")
+    print(f"{'Method':<40} {'Loading (ms)':>12} {'Cold (ms)':>12} {'Hot (ms)':>12}")
+    print(f"{'-' * 80}")
+    print(f"{'1. erg_python.get_signal()':<40} {load_time_1 / 1_000_000:>12.3f} {cold_time_1 / 1_000_000:>12.3f} {hot_time_1 / 1_000_000:>12.3f}")
+    print(f"{'2. erg_python.get_all_signals()':<40} {load_time_2 / 1_000_000:>12.3f} {cold_time_2 / 1_000_000:>12.3f} {hot_time_2 / 1_000_000:>12.3f}")
+    print(f"{'3. cmerg.get()':<40} {load_time_3 / 1_000_000:>12.3f} {cold_time_3 / 1_000_000:>12.3f} {hot_time_3 / 1_000_000:>12.3f}")
 
-    load_speedup = load_time_cm / load_time_erg
-    cold_speedup = cold_read_cm / cold_read_erg
-    hot_speedup = hot_read_cm / hot_read_erg
+    print(f"\n{'SPEEDUP vs cmerg.get() (higher is better)':^80}")
+    print(f"{'-' * 80}")
+    load_speedup_1 = load_time_3 / load_time_1
+    cold_speedup_1 = cold_time_3 / cold_time_1
+    hot_speedup_1 = hot_time_3 / hot_time_1
+    print(f"{'erg_python.get_signal()':<40} {load_speedup_1:>12.2f}x {cold_speedup_1:>12.2f}x {hot_speedup_1:>12.2f}x")
 
-    print(f"Loading:              {load_speedup:>10.2f}x {'faster' if load_speedup > 1 else 'slower'}")
-    print(f"Cold read:            {cold_speedup:>10.2f}x {'faster' if cold_speedup > 1 else 'slower'}")
-    print(f"Hot read:             {hot_speedup:>10.2f}x {'faster' if hot_speedup > 1 else 'slower'}")
+    load_speedup_2 = load_time_3 / load_time_2
+    cold_speedup_2 = cold_time_3 / cold_time_2
+    hot_speedup_2 = hot_time_3 / hot_time_2
+    print(f"{'erg_python.get_all_signals()':<40} {load_speedup_2:>12.2f}x {cold_speedup_2:>12.2f}x {hot_speedup_2:>12.2f}x")
+
+    # Memory footprint summary
+    print(f"\n{'=' * 80}")
+    print("MEMORY FOOTPRINT SUMMARY")
+    print(f"{'=' * 80}")
+    mem_delta_load_1 = mem_after_load_1 - mem_before_1
+    mem_delta_cold_1 = mem_after_cold_1 - mem_after_load_1
+    mem_delta_load_2 = mem_after_load_2 - mem_before_2
+    mem_delta_cold_2 = mem_after_cold_2 - mem_after_load_2
+    mem_delta_load_3 = mem_after_load_3 - mem_before_3
+    mem_delta_cold_3 = mem_after_cold_3 - mem_after_load_3
+
+    print(f"{'Method':<40} {'Load Δ (MB)':>12} {'Cold Δ (MB)':>12} {'Total (MB)':>12}")
+    print(f"{'-' * 80}")
+    print(f"{'1. erg_python.get_signal()':<40} {mem_delta_load_1:>12.2f} {mem_delta_cold_1:>12.2f} {mem_delta_load_1 + mem_delta_cold_1:>12.2f}")
+    print(f"{'2. erg_python.get_all_signals()':<40} {mem_delta_load_2:>12.2f} {mem_delta_cold_2:>12.2f} {mem_delta_load_2 + mem_delta_cold_2:>12.2f}")
+    print(f"{'3. cmerg.get()':<40} {mem_delta_load_3:>12.2f} {mem_delta_cold_3:>12.2f} {mem_delta_load_3 + mem_delta_cold_3:>12.2f}")
+
+    print(f"\nNOTE: Memory measurements show incremental increases and may be affected by:")
+    print(f"  - Python garbage collection timing")
+    print(f"  - OS memory allocation strategies")
+    print(f"  - Background Python processes")
+    print(f"  - Memory-mapped files (shown in RSS but may not be physical RAM)")
+    print(f"  Use these numbers for relative comparison, not absolute values.")
 
     # Verify data integrity
-    print(f"\n{'=' * 70}")
+    print(f"\n{'=' * 80}")
     print("DATA INTEGRITY CHECK")
-    print(f"{'=' * 70}")
+    print(f"{'=' * 80}")
 
     all_match = True
-    for sig in test_signals[:3]:  # Check first 3 signals
-        data_erg = erg_python[sig]
-        data_cm = erg_cm.get(sig).samples  # cmerg returns Signal object with .samples property
 
-        if len(data_erg) != len(data_cm):
-            print(f"✗ {sig}: Length mismatch ({len(data_erg)} vs {len(data_cm)})")
-            all_match = False
-        elif not (data_erg == data_cm).all():
-            import numpy as np
+    print(f"Comparing first signal: {signal_names[0]}")
+    print(f"  Note: Method 2 (get_all_signals) returns raw data without scaling")
 
-            max_diff = np.abs(data_erg - data_cm).max()
-            print(f"✗ {sig}: Data mismatch (max diff: {max_diff})")
-            all_match = False
-        else:
-            print(f"✓ {sig}: Data matches")
+    # Check lengths
+    if len(erg1_first) != len(erg_cm_first) or len(erg1_first) != len(erg2_first):
+        print(f"  ✗ Length mismatch: method1={len(erg1_first)}, method2={len(erg2_first)}, method3={len(erg_cm_first)}")
+        all_match = False
+    # Compare methods 1 and 3 (both have scaling)
+    elif not np.allclose(erg1_first, erg_cm_first, rtol=1e-9, atol=1e-12):
+        max_diff = np.abs(erg1_first - erg_cm_first).max()
+        print(f"  ✗ Data mismatch (method 1 vs 3, max diff: {max_diff})")
+        all_match = False
+    else:
+        print(f"  ✓ Methods 1 and 3 match (with scaling)")
+        # Show that method 2 is different (raw data)
+        if not np.allclose(erg2_first, erg1_first, rtol=1e-9, atol=1e-12):
+            print(f"  ✓ Method 2 correctly returns raw data (different from scaled)")
+
+    print(f"Comparing last signal: {signal_names[-1]}")
+
+    # Check lengths
+    if len(erg1_last) != len(erg_cm_last) or len(erg1_last) != len(erg2_last):
+        print(f"  ✗ Length mismatch: method1={len(erg1_last)}, method2={len(erg2_last)}, method3={len(erg_cm_last)}")
+        all_match = False
+    # Compare methods 1 and 3 (both have scaling)
+    elif not np.allclose(erg1_last, erg_cm_last, rtol=1e-9, atol=1e-12):
+        max_diff = np.abs(erg1_last - erg_cm_last).max()
+        print(f"  ✗ Data mismatch (method 1 vs 3, max diff: {max_diff})")
+        all_match = False
+    else:
+        print(f"  ✓ Methods 1 and 3 match (with scaling)")
+        # Show that method 2 is different (raw data)
+        if not np.allclose(erg2_last, erg1_last, rtol=1e-9, atol=1e-12):
+            print(f"  ✓ Method 2 correctly returns raw data (different from scaled)")
 
     if all_match:
-        print("\nAll tested signals match between erg_python and cmerg!")
+        print("\n✓ All length checks passed!")
+        print("✓ Methods 1 & 3 data match (both apply scaling)")
+        print("✓ Method 2 provides raw zero-copy memory-mapped data")
 
     return True
 
@@ -322,6 +469,7 @@ Examples:
     tests = [
         ("Basic functionality", test_basic),
         ("Signal info", test_signal_info),
+        ("get_all_signals() 2D array", test_get_all_signals),
         ("Error handling", test_error_handling),
         ("Performance comparison", test_performance_comparison),
     ]

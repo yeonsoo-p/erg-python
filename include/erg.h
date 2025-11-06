@@ -2,6 +2,7 @@
 #define ERG_H
 
 #include <infofile.h>
+#include <utils.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -73,8 +74,9 @@ typedef struct {
 typedef struct {
     void* impl; /* Internal C++ implementation */
 
-    char*    erg_path; /* Path to .erg file */
-    InfoFile info;     /* Parsed .erg.info file */
+    char*      erg_path;     /* Path to .erg file */
+    InfoFile   info;         /* Parsed .erg.info file */
+    MappedFile mapped_file;  /* Memory-mapped ERG file data */
 
     ERGSignal* signals;      /* Array of signal metadata */
     size_t     signal_count; /* Number of signals */
@@ -141,9 +143,8 @@ ERGError erg_parse_impl(ERG* erg, int print_perf_metrics);
 #define erg_parse_default(erg)                 erg_parse_impl(erg, 0)
 
 /**
- * Get signal data by name (returns raw typed data with scaling applied)
+ * Get signal data by name (returns raw typed data)
  * Returns data in its native type (float*, double*, int*, etc.)
- * Applies scaling (factor/offset) in-place using native type if needed
  * Uses memory-mapped I/O for efficient zero-copy access
  * Automatically uses OpenMP parallelization for large datasets (>5000 samples)
  * Allocates new array - caller must free
@@ -174,7 +175,6 @@ const ERGSignal* erg_get_signal_info(const ERG* erg, const char* signal_name);
  * @return Index of signal, or -1 if not found
  */
 int erg_find_signal_index(const ERG* erg, const char* signal_name);
-
 
 /**
  * Free all memory associated with ERG structure

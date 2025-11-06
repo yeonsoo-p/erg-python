@@ -22,7 +22,8 @@ typedef enum {
  * Uses C++ hash table for O(1) lookups
  */
 typedef struct {
-    void* impl; /* Internal C++ implementation */
+    void*      impl;        /* Internal C++ implementation */
+    MappedFile mapped_file; /* Memory-mapped info file data */
 } InfoFile;
 
 /**

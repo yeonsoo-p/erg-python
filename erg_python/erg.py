@@ -9,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 # Import the C extension
 from . import erg_python as _erg_c
@@ -69,6 +68,13 @@ class ERG:
         # Only initialize if not already initialized (for cached instances)
         if not hasattr(self, "_erg"):
             self._erg = _erg_c.ERG(str(filepath))
+            # Initialize structured array cache (None means not yet retrieved)
+            self._struct_array_cache = None
+            # Initialize metadata caches
+            self._units_cache: dict[str, str] = {}
+            self._types_cache: dict[str, np.dtype] = {}
+            self._factors_cache: dict[str, float] = {}
+            self._offsets_cache: dict[str, float] = {}
 
     def get_signal(self, signal_name: str) -> np.ndarray:
         """
@@ -77,11 +83,14 @@ class ERG:
         Returns the signal data as a NumPy array in its native data type
         (float32, float64, int32, etc.) with scaling factors already applied.
 
+        If get_all_signals() has been called, retrieves data from the cached
+        structured array. Otherwise, fetches directly from C.
+
         Args:
             signal_name: Name of the signal (e.g., "Time", "Car.v")
 
         Returns:
-            1D NumPy array with native dtype
+            1D NumPy array with native dtype and scaling applied
 
         Raises:
             KeyError: If the signal name is not found
@@ -91,27 +100,53 @@ class ERG:
             >>> velocity = erg.get_signal("Car.v")
             >>> print(f"Max velocity: {max(velocity):.2f}, dtype: {velocity.dtype}")
         """
-        return self._erg.get_signal(signal_name)
+        # Check if structured array cache exists
+        if self._struct_array_cache is not None:
+            # Extract raw data from cached structured array by field name
+            try:
+                raw_data = self._struct_array_cache[signal_name]
+            except ValueError as e:
+                # Convert ValueError to KeyError for consistency
+                raise KeyError(f"Signal '{signal_name}' not found") from e
+        else:
+            # Fetch raw data from C
+            raw_data = self._erg.get_signal(signal_name)
 
-    def get_all_signals(self) -> pd.DataFrame:
+        # Get scaling parameters
+        factor = self.get_signal_factor(signal_name)
+        offset = self.get_signal_offset(signal_name)
+
+        # Apply scaling: scaled = raw * factor + offset
+        if factor != 1.0 or offset != 0.0:
+            scaled_data = raw_data * factor + offset
+        else:
+            scaled_data = raw_data
+
+        return scaled_data
+
+    def get_all_signals(self) -> np.ndarray:
         """
-        Get all signals as a pandas DataFrame.
+        Get all signals as a structured NumPy array.
 
-        Returns a DataFrame with all signals as columns, using signal names
-        as column names.
+        Returns a structured array where each field is a signal with its native
+        data type. This is a zero-copy view of the memory-mapped data with raw
+        values (no scaling applied). The result is cached for future get_signal() calls.
 
         Returns:
-            DataFrame with all signals, indexed by row number
+            Structured NumPy array with shape (sample_count,)
 
         Example:
             >>> erg = ERG("simulation.erg")
-            >>> df = erg.get_all_signals()
-            >>> print(df.columns)
-            >>> print(df["Time"].head())
+            >>> data = erg.get_all_signals()  # Returns structured array
+            >>> print(f"Shape: {data.shape}")  # (samples,)
+            >>> print(f"Fields: {data.dtype.names}")  # ('Time', 'Car.v', ...)
+            >>> time = data['Time']  # Access by field name (raw data)
+            >>> velocity = data['Car.v']  # Raw data - use get_signal() for scaled
         """
-        signal_names = self.get_signal_names()
-        data = {name: self.get_signal(name) for name in signal_names}
-        return pd.DataFrame(data)
+        # Get and cache raw structured array from C (zero-copy view) if not already cached
+        if self._struct_array_cache is None:
+            self._struct_array_cache = self._erg.get_all_signals()
+        return self._struct_array_cache
 
     def get_signal_names(self) -> list[str]:
         """
@@ -141,7 +176,8 @@ class ERG:
             >>> print(f"Time unit: {units['Time']}")
             >>> print(f"Velocity unit: {units['Car.v']}")
         """
-        return self._erg.get_signal_units()
+        self._units_cache = self._erg.get_signal_units()
+        return self._units_cache
 
     def get_signal_unit(self, signal_name: str) -> str:
         """
@@ -161,7 +197,25 @@ class ERG:
             >>> unit = erg.get_signal_unit("Car.v")
             >>> print(f"Velocity unit: {unit}")
         """
-        return self._erg.get_signal_unit(signal_name)
+        if signal_name not in self._units_cache:
+            self._units_cache[signal_name] = self._erg.get_signal_unit(signal_name)
+        return self._units_cache[signal_name]
+
+    def get_signal_types(self) -> dict[str, np.dtype]:
+        """
+        Get all signal types as a dictionary.
+
+        Returns:
+            Dictionary mapping signal names to numpy dtypes
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> types = erg.get_signal_types()
+            >>> print(f"Time type: {types['Time']}")
+            >>> print(f"Velocity type: {types['Car.v']}")
+        """
+        self._types_cache = self._erg.get_signal_types()
+        return self._types_cache
 
     def get_signal_type(self, signal_name: str) -> np.dtype:
         """
@@ -181,17 +235,118 @@ class ERG:
             >>> dtype = erg.get_signal_type("Car.v")
             >>> print(f"Velocity dtype: {dtype}")
         """
-        return self._erg.get_signal_type(signal_name)
+        if signal_name not in self._types_cache:
+            self._types_cache[signal_name] = self._erg.get_signal_type(signal_name)
+        return self._types_cache[signal_name]
 
-    def __getitem__(self, signal_name: str) -> np.ndarray:
+    def get_signal_factors(self) -> dict[str, float]:
         """
-        Get signal data using dictionary-style access.
+        Get all signal scaling factors as a dictionary.
+
+        Returns:
+            Dictionary mapping signal names to scaling factors
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> factors = erg.get_signal_factors()
+            >>> print(f"Time factor: {factors['Time']}")
+            >>> print(f"Velocity factor: {factors['Car.v']}")
+        """
+        self._factors_cache = self._erg.get_signal_factors()
+        return self._factors_cache
+
+    def get_signal_factor(self, signal_name: str) -> float:
+        """
+        Get the scaling factor for a signal.
 
         Args:
             signal_name: Name of the signal
 
         Returns:
-            NumPy array of signal data
+            Scaling factor (float)
+
+        Raises:
+            KeyError: If the signal name is not found
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> factor = erg.get_signal_factor("Car.v")
+            >>> print(f"Velocity factor: {factor}")
+        """
+        if signal_name not in self._factors_cache:
+            self._factors_cache[signal_name] = self._erg.get_signal_factor(signal_name)
+        return self._factors_cache[signal_name]
+
+    def get_signal_offsets(self) -> dict[str, float]:
+        """
+        Get all signal scaling offsets as a dictionary.
+
+        Returns:
+            Dictionary mapping signal names to scaling offsets
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> offsets = erg.get_signal_offsets()
+            >>> print(f"Time offset: {offsets['Time']}")
+            >>> print(f"Velocity offset: {offsets['Car.v']}")
+        """
+        self._offsets_cache = self._erg.get_signal_offsets()
+        return self._offsets_cache
+
+    def get_signal_offset(self, signal_name: str) -> float:
+        """
+        Get the scaling offset for a signal.
+
+        Args:
+            signal_name: Name of the signal
+
+        Returns:
+            Scaling offset (float)
+
+        Raises:
+            KeyError: If the signal name is not found
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> offset = erg.get_signal_offset("Car.v")
+            >>> print(f"Velocity offset: {offset}")
+        """
+        if signal_name not in self._offsets_cache:
+            self._offsets_cache[signal_name] = self._erg.get_signal_offset(signal_name)
+        return self._offsets_cache[signal_name]
+
+    def get_signal_index(self, signal_name: str) -> int:
+        """
+        Get the index of a signal by name.
+
+        Args:
+            signal_name: Name of the signal
+
+        Returns:
+            Signal index (integer)
+
+        Raises:
+            KeyError: If the signal name is not found
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> index = erg.get_signal_index("Car.v")
+            >>> print(f"Car.v is at index: {index}")
+        """
+        return self._erg.get_signal_index(signal_name)
+
+    def __getitem__(self, signal_name: str) -> np.ndarray:
+        """
+        Get signal data using dictionary-style access.
+
+        This is a simple wrapper around get_signal() that enables
+        dictionary-style access: erg["signal_name"]
+
+        Args:
+            signal_name: Name of the signal
+
+        Returns:
+            NumPy array of signal data with scaling applied
 
         Raises:
             KeyError: If the signal name is not found

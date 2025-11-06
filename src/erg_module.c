@@ -35,7 +35,6 @@ static PyObject* ERG_new(PyTypeObject* type, PyObject* args, PyObject* kwds) {
 static int ERG_init(ERGObject* self, PyObject* args, PyObject* kwds) {
     PyObject*    filepath_obj;
     const char*  filepath;
-    char         info_path[4096];
     static char* kwlist[] = {"filepath", NULL};
 
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &filepath_obj)) {
@@ -62,24 +61,6 @@ static int ERG_init(ERGObject* self, PyObject* args, PyObject* kwds) {
             return -1;
         }
     }
-
-    /* Check if .erg file exists */
-    FILE* erg_file = fopen(filepath, "rb");
-    if (erg_file == NULL) {
-        PyErr_Format(PyExc_FileNotFoundError, "ERG file not found: '%s'", filepath);
-        return -1;
-    }
-    fclose(erg_file);
-
-    /* Check if .erg.info file exists */
-    snprintf(info_path, sizeof(info_path), "%s.info", filepath);
-    FILE* info_file = fopen(info_path, "r");
-    if (info_file == NULL) {
-        PyErr_Format(PyExc_FileNotFoundError, "ERG info file not found: '%s'",
-                     info_path);
-        return -1;
-    }
-    fclose(info_file);
 
     /* Initialize ERG structure */
     erg_init(&self->erg, filepath);
@@ -124,19 +105,14 @@ static void ERG_dealloc(ERGObject* self) {
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-/* ERG.get_signal(name) -> numpy array */
-static PyObject* ERG_get_signal(ERGObject* self, PyObject* args) {
-    const char*      signal_name;
+/* Internal helper function to get signal data without argument parsing */
+static PyObject* ERG_get_signal_internal(ERGObject* self, const char* signal_name) {
     void*            data;
     const ERGSignal* signal_info;
     int              numpy_type;
 
     if (!self->parsed) {
         PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
-        return NULL;
-    }
-
-    if (!PyArg_ParseTuple(args, "s", &signal_name)) {
         return NULL;
     }
 
@@ -206,6 +182,30 @@ static PyObject* ERG_get_signal(ERGObject* self, PyObject* args) {
     PyArray_ENABLEFLAGS((PyArrayObject*)array, NPY_ARRAY_OWNDATA);
 
     return array;
+}
+
+/* ERG.get_signal(name) -> numpy array - FASTCALL wrapper for internal function */
+static PyObject* ERG_get_signal(ERGObject* self, PyObject* const* args, Py_ssize_t nargs) {
+    const char* signal_name;
+
+    /* METH_FASTCALL requires exactly 1 argument */
+    if (nargs != 1) {
+        PyErr_Format(PyExc_TypeError, "get_signal() takes exactly 1 argument (%zd given)", nargs);
+        return NULL;
+    }
+
+    /* Check if argument is a string */
+    if (!PyUnicode_Check(args[0])) {
+        PyErr_SetString(PyExc_TypeError, "signal name must be a string");
+        return NULL;
+    }
+
+    signal_name = PyUnicode_AsUTF8(args[0]);
+    if (signal_name == NULL) {
+        return NULL;
+    }
+
+    return ERG_get_signal_internal(self, signal_name);
 }
 
 
@@ -299,6 +299,148 @@ static PyObject* ERG_get_signal_type(ERGObject* self, PyObject* args) {
     return (PyObject*)dtype;
 }
 
+/* ERG.get_all_signals() -> structured numpy array (zero-copy view) */
+static PyObject* ERG_get_all_signals(ERGObject* self, PyObject* Py_UNUSED(args)) {
+    size_t         i;
+    PyObject*      names_list;
+    PyObject*      formats_list;
+    PyObject*      offsets_list;
+    PyObject*      dtype_dict;
+    PyArray_Descr* dtype = NULL;
+    PyObject*      array;
+    npy_intp       shape[1];
+    const char*    data_ptr;
+
+    if (!self->parsed) {
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+        return NULL;
+    }
+
+    /* Build dtype using dict format: {'names': [...], 'formats': [...], 'offsets': [...]} */
+    names_list = PyList_New(self->erg.signal_count);
+    formats_list = PyList_New(self->erg.signal_count);
+    offsets_list = PyList_New(self->erg.signal_count);
+
+    if (!names_list || !formats_list || !offsets_list) {
+        Py_XDECREF(names_list);
+        Py_XDECREF(formats_list);
+        Py_XDECREF(offsets_list);
+        return NULL;
+    }
+
+    for (i = 0; i < self->erg.signal_count; i++) {
+        const ERGSignal* signal = &self->erg.signals[i];
+        PyObject*        name;
+        PyObject*        format_str;
+        PyObject*        offset_int;
+        const char*      dtype_code;
+
+        /* Convert ERG type to NumPy dtype string */
+        switch (signal->type) {
+        case ERG_FLOAT:
+            dtype_code = "<f4";
+            break;
+        case ERG_DOUBLE:
+            dtype_code = "<f8";
+            break;
+        case ERG_INT:
+            dtype_code = "<i4";
+            break;
+        case ERG_UINT:
+            dtype_code = "<u4";
+            break;
+        case ERG_SHORT:
+            dtype_code = "<i2";
+            break;
+        case ERG_USHORT:
+            dtype_code = "<u2";
+            break;
+        case ERG_CHAR:
+            dtype_code = "<i1";
+            break;
+        case ERG_UCHAR:
+            dtype_code = "<u1";
+            break;
+        case ERG_LONGLONG:
+            dtype_code = "<i8";
+            break;
+        case ERG_ULONGLONG:
+            dtype_code = "<u8";
+            break;
+        default:
+            Py_DECREF(names_list);
+            Py_DECREF(formats_list);
+            Py_DECREF(offsets_list);
+            PyErr_SetString(PyExc_RuntimeError, "Unsupported signal data type");
+            return NULL;
+        }
+
+        /* Add name, format, and offset */
+        name = PyUnicode_FromString(signal->name);
+        format_str = PyUnicode_FromString(dtype_code);
+        offset_int = PyLong_FromSize_t(signal->data_offset);
+
+        if (!name || !format_str || !offset_int) {
+            Py_XDECREF(name);
+            Py_XDECREF(format_str);
+            Py_XDECREF(offset_int);
+            Py_DECREF(names_list);
+            Py_DECREF(formats_list);
+            Py_DECREF(offsets_list);
+            return NULL;
+        }
+
+        PyList_SET_ITEM(names_list, i, name);
+        PyList_SET_ITEM(formats_list, i, format_str);
+        PyList_SET_ITEM(offsets_list, i, offset_int);
+    }
+
+    /* Create dtype dict */
+    dtype_dict = PyDict_New();
+    if (!dtype_dict) {
+        Py_DECREF(names_list);
+        Py_DECREF(formats_list);
+        Py_DECREF(offsets_list);
+        return NULL;
+    }
+
+    PyDict_SetItemString(dtype_dict, "names", names_list);
+    PyDict_SetItemString(dtype_dict, "formats", formats_list);
+    PyDict_SetItemString(dtype_dict, "offsets", offsets_list);
+    PyDict_SetItemString(dtype_dict, "itemsize", PyLong_FromSize_t(self->erg.row_size));
+
+    Py_DECREF(names_list);
+    Py_DECREF(formats_list);
+    Py_DECREF(offsets_list);
+
+    /* Convert dict to dtype */
+    if (PyArray_DescrConverter(dtype_dict, &dtype) != NPY_SUCCEED) {
+        Py_DECREF(dtype_dict);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create NumPy dtype");
+        return NULL;
+    }
+    Py_DECREF(dtype_dict);
+
+    /* Create zero-copy view of memory-mapped data */
+    shape[0] = (npy_intp)self->erg.sample_count;
+    data_ptr = (const char*)self->erg.mapped_file.data + 16; /* Skip 16-byte header */
+
+    array = PyArray_NewFromDescr(&PyArray_Type, dtype, 1, shape, NULL,
+                                  (void*)data_ptr, NPY_ARRAY_DEFAULT, NULL);
+    if (array == NULL) {
+        return NULL;
+    }
+
+    /* Set base object to prevent NumPy from freeing the memory-mapped data */
+    if (PyArray_SetBaseObject((PyArrayObject*)array, (PyObject*)self) < 0) {
+        Py_DECREF(array);
+        return NULL;
+    }
+    Py_INCREF(self);
+
+    return array;
+}
+
 /* ERG.get_signal_names() */
 static PyObject* ERG_get_signal_names(ERGObject* self, PyObject* Py_UNUSED(args)) {
     PyObject* list;
@@ -359,41 +501,223 @@ static PyObject* ERG_get_signal_units(ERGObject* self, PyObject* Py_UNUSED(args)
     return dict;
 }
 
-/* ERG.__getitem__(name) - for dictionary-style access */
-static PyObject* ERG_getitem(ERGObject* self, PyObject* key) {
+/* ERG.get_signal_types() - returns dict mapping signal names to numpy dtypes */
+static PyObject* ERG_get_signal_types(ERGObject* self, PyObject* Py_UNUSED(args)) {
+    PyObject* dict;
+    size_t    i;
+
+    if (!self->parsed) {
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+        return NULL;
+    }
+
+    dict = PyDict_New();
+    if (dict == NULL) {
+        return NULL;
+    }
+
+    for (i = 0; i < self->erg.signal_count; i++) {
+        const ERGSignal* signal = &self->erg.signals[i];
+        PyArray_Descr*   dtype;
+        int              numpy_type;
+
+        /* Map ERG type to NumPy type */
+        switch (signal->type) {
+        case ERG_FLOAT:    numpy_type = NPY_FLOAT; break;
+        case ERG_DOUBLE:   numpy_type = NPY_DOUBLE; break;
+        case ERG_INT:      numpy_type = NPY_INT32; break;
+        case ERG_UINT:     numpy_type = NPY_UINT32; break;
+        case ERG_SHORT:    numpy_type = NPY_INT16; break;
+        case ERG_USHORT:   numpy_type = NPY_UINT16; break;
+        case ERG_CHAR:     numpy_type = NPY_INT8; break;
+        case ERG_UCHAR:    numpy_type = NPY_UINT8; break;
+        case ERG_LONGLONG: numpy_type = NPY_INT64; break;
+        case ERG_ULONGLONG: numpy_type = NPY_UINT64; break;
+        default:
+            Py_DECREF(dict);
+            PyErr_SetString(PyExc_RuntimeError, "Unsupported signal data type");
+            return NULL;
+        }
+
+        dtype = PyArray_DescrFromType(numpy_type);
+        if (dtype == NULL) {
+            Py_DECREF(dict);
+            return NULL;
+        }
+
+        if (PyDict_SetItemString(dict, signal->name, (PyObject*)dtype) < 0) {
+            Py_DECREF(dtype);
+            Py_DECREF(dict);
+            return NULL;
+        }
+        Py_DECREF(dtype);
+    }
+
+    return dict;
+}
+
+/* ERG.get_signal_factors() - returns dict mapping signal names to scaling factors */
+static PyObject* ERG_get_signal_factors(ERGObject* self, PyObject* Py_UNUSED(args)) {
+    PyObject* dict;
+    size_t    i;
+
+    if (!self->parsed) {
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+        return NULL;
+    }
+
+    dict = PyDict_New();
+    if (dict == NULL) {
+        return NULL;
+    }
+
+    for (i = 0; i < self->erg.signal_count; i++) {
+        const ERGSignal* signal = &self->erg.signals[i];
+        PyObject*        factor = PyFloat_FromDouble(signal->factor);
+        if (factor == NULL) {
+            Py_DECREF(dict);
+            return NULL;
+        }
+        if (PyDict_SetItemString(dict, signal->name, factor) < 0) {
+            Py_DECREF(factor);
+            Py_DECREF(dict);
+            return NULL;
+        }
+        Py_DECREF(factor);
+    }
+
+    return dict;
+}
+
+/* ERG.get_signal_factor(name) - returns scaling factor for a signal */
+static PyObject* ERG_get_signal_factor(ERGObject* self, PyObject* args) {
+    const char*      signal_name;
+    const ERGSignal* signal;
+
+    if (!self->parsed) {
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+        return NULL;
+    }
+
+    if (!PyArg_ParseTuple(args, "s", &signal_name)) {
+        return NULL;
+    }
+
+    signal = erg_get_signal_info(&self->erg, signal_name);
+    if (signal == NULL) {
+        PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
+        return NULL;
+    }
+
+    return PyFloat_FromDouble(signal->factor);
+}
+
+/* ERG.get_signal_offsets() - returns dict mapping signal names to scaling offsets */
+static PyObject* ERG_get_signal_offsets(ERGObject* self, PyObject* Py_UNUSED(args)) {
+    PyObject* dict;
+    size_t    i;
+
+    if (!self->parsed) {
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+        return NULL;
+    }
+
+    dict = PyDict_New();
+    if (dict == NULL) {
+        return NULL;
+    }
+
+    for (i = 0; i < self->erg.signal_count; i++) {
+        const ERGSignal* signal = &self->erg.signals[i];
+        PyObject*        offset = PyFloat_FromDouble(signal->offset);
+        if (offset == NULL) {
+            Py_DECREF(dict);
+            return NULL;
+        }
+        if (PyDict_SetItemString(dict, signal->name, offset) < 0) {
+            Py_DECREF(offset);
+            Py_DECREF(dict);
+            return NULL;
+        }
+        Py_DECREF(offset);
+    }
+
+    return dict;
+}
+
+/* ERG.get_signal_offset(name) - returns scaling offset for a signal */
+static PyObject* ERG_get_signal_offset(ERGObject* self, PyObject* args) {
+    const char*      signal_name;
+    const ERGSignal* signal;
+
+    if (!self->parsed) {
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+        return NULL;
+    }
+
+    if (!PyArg_ParseTuple(args, "s", &signal_name)) {
+        return NULL;
+    }
+
+    signal = erg_get_signal_info(&self->erg, signal_name);
+    if (signal == NULL) {
+        PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
+        return NULL;
+    }
+
+    return PyFloat_FromDouble(signal->offset);
+}
+
+/* ERG.get_signal_index(name) - returns index of signal by name */
+static PyObject* ERG_get_signal_index(ERGObject* self, PyObject* args) {
     const char* signal_name;
+    int         index;
 
-    if (!PyUnicode_Check(key)) {
-        PyErr_SetString(PyExc_TypeError, "Signal name must be a string");
+    if (!self->parsed) {
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
         return NULL;
     }
 
-    signal_name = PyUnicode_AsUTF8(key);
-    if (signal_name == NULL) {
+    if (!PyArg_ParseTuple(args, "s", &signal_name)) {
         return NULL;
     }
 
-    return ERG_get_signal(self, Py_BuildValue("(s)", signal_name));
+    index = erg_find_signal_index(&self->erg, signal_name);
+    if (index == -1) {
+        PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
+        return NULL;
+    }
+
+    return PyLong_FromLong(index);
 }
 
 /* Method definitions */
 static PyMethodDef ERG_methods[] = {
-    {"get_signal", (PyCFunction)ERG_get_signal, METH_VARARGS,
+    {"get_signal", (PyCFunction)(void(*)(void))ERG_get_signal, METH_FASTCALL,
      "Get signal data by name as numpy array"},
+    {"get_all_signals", (PyCFunction)ERG_get_all_signals, METH_NOARGS,
+     "Get all signals as structured numpy array (zero-copy view)"},
     {"get_signal_names", (PyCFunction)ERG_get_signal_names, METH_NOARGS,
      "Get list of all signal names"},
     {"get_signal_units", (PyCFunction)ERG_get_signal_units, METH_NOARGS,
      "Get dictionary mapping signal names to units"},
     {"get_signal_unit", (PyCFunction)ERG_get_signal_unit, METH_VARARGS,
      "Get unit string for a signal by name"},
+    {"get_signal_types", (PyCFunction)ERG_get_signal_types, METH_NOARGS,
+     "Get dictionary mapping signal names to numpy dtypes"},
     {"get_signal_type", (PyCFunction)ERG_get_signal_type, METH_VARARGS,
      "Get numpy dtype for a signal by name"},
+    {"get_signal_factors", (PyCFunction)ERG_get_signal_factors, METH_NOARGS,
+     "Get dictionary mapping signal names to scaling factors"},
+    {"get_signal_factor", (PyCFunction)ERG_get_signal_factor, METH_VARARGS,
+     "Get scaling factor for a signal by name"},
+    {"get_signal_offsets", (PyCFunction)ERG_get_signal_offsets, METH_NOARGS,
+     "Get dictionary mapping signal names to scaling offsets"},
+    {"get_signal_offset", (PyCFunction)ERG_get_signal_offset, METH_VARARGS,
+     "Get scaling offset for a signal by name"},
+    {"get_signal_index", (PyCFunction)ERG_get_signal_index, METH_VARARGS,
+     "Get index of signal by name"},
     {NULL}
-};
-
-/* Mapping protocol for dictionary-style access */
-static PyMappingMethods ERG_as_mapping = {
-    .mp_subscript = (binaryfunc)ERG_getitem,
 };
 
 /* Type definition */
@@ -407,7 +731,6 @@ static PyTypeObject ERGType = {
     .tp_init                               = (initproc)ERG_init,
     .tp_dealloc                            = (destructor)ERG_dealloc,
     .tp_methods                            = ERG_methods,
-    .tp_as_mapping                         = &ERG_as_mapping,
 };
 
 /* Module definition */
