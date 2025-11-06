@@ -48,6 +48,8 @@ example
 cmake_example
 build*/
 venv*/
+.claude
+.vscode
 
 # Python build artifacts
 *.pyd
