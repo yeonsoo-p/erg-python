@@ -99,12 +99,12 @@ static int ERG_init(ERGObject* self, PyObject* args, PyObject* kwds) {
             Error underlying = erg_get_error(&self->erg);
             if (err == ERG_MMAP_ERROR) {
                 PyErr_Format(PyExc_RuntimeError,
-                    "Failed to parse ERG file: %s (MMap error: %s)",
-                    err_msg, mmap_error_string((MMapError)underlying));
+                             "Failed to parse ERG file: %s (MMap error: %s)",
+                             err_msg, mmap_error_string((MMapError)underlying));
             } else {
                 PyErr_Format(PyExc_RuntimeError,
-                    "Failed to parse ERG file: %s (InfoFile error: %s)",
-                    err_msg, infofile_error_string((InfoFileError)underlying));
+                             "Failed to parse ERG file: %s (InfoFile error: %s)",
+                             err_msg, infofile_error_string((InfoFileError)underlying));
             }
         } else {
             PyErr_Format(PyExc_RuntimeError, "Failed to parse ERG file: %s", err_msg);
@@ -208,123 +208,9 @@ static PyObject* ERG_get_signal(ERGObject* self, PyObject* args) {
     return array;
 }
 
-/* ERG.signal_names property */
-static PyObject* ERG_get_signal_names(ERGObject* self, void* closure) {
-    PyObject* list;
-    size_t    i;
-    (void)closure;
 
-    if (!self->parsed) {
-        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
-        return NULL;
-    }
-
-    list = PyList_New(self->erg.signal_count);
-    if (list == NULL) {
-        return NULL;
-    }
-
-    for (i = 0; i < self->erg.signal_count; i++) {
-        PyObject* name = PyUnicode_FromString(self->erg.signals[i].name);
-        if (name == NULL) {
-            Py_DECREF(list);
-            return NULL;
-        }
-        PyList_SET_ITEM(list, i, name);
-    }
-
-    return list;
-}
-
-/* ERG.sample_count property */
-static PyObject* ERG_get_sample_count(ERGObject* self, void* closure) {
-    (void)closure;
-    if (!self->parsed) {
-        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
-        return NULL;
-    }
-    return PyLong_FromSize_t(self->erg.sample_count);
-}
-
-/* ERG.get_signal_info(name) */
-static PyObject* ERG_get_signal_info(ERGObject* self, PyObject* args) {
-    const char*      signal_name;
-    const ERGSignal* signal;
-    PyObject*        dict;
-
-    if (!self->parsed) {
-        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
-        return NULL;
-    }
-
-    if (!PyArg_ParseTuple(args, "s", &signal_name)) {
-        return NULL;
-    }
-
-    signal = erg_get_signal_info(&self->erg, signal_name);
-    if (signal == NULL) {
-        PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
-        return NULL;
-    }
-
-    dict = PyDict_New();
-    if (dict == NULL) {
-        return NULL;
-    }
-
-    PyDict_SetItemString(dict, "name", PyUnicode_FromString(signal->name));
-    PyDict_SetItemString(dict, "unit",
-                         PyUnicode_FromString(signal->unit ? signal->unit : ""));
-    PyDict_SetItemString(dict, "factor", PyFloat_FromDouble(signal->factor));
-    PyDict_SetItemString(dict, "offset", PyFloat_FromDouble(signal->offset));
-    PyDict_SetItemString(dict, "type_size", PyLong_FromSize_t(signal->type_size));
-
-    const char* type_name;
-    switch (signal->type) {
-    case ERG_FLOAT:
-        type_name = "float";
-        break;
-    case ERG_DOUBLE:
-        type_name = "double";
-        break;
-    case ERG_LONGLONG:
-        type_name = "longlong";
-        break;
-    case ERG_ULONGLONG:
-        type_name = "ulonglong";
-        break;
-    case ERG_INT:
-        type_name = "int";
-        break;
-    case ERG_UINT:
-        type_name = "uint";
-        break;
-    case ERG_SHORT:
-        type_name = "short";
-        break;
-    case ERG_USHORT:
-        type_name = "ushort";
-        break;
-    case ERG_CHAR:
-        type_name = "char";
-        break;
-    case ERG_UCHAR:
-        type_name = "uchar";
-        break;
-    case ERG_BYTES:
-        type_name = "bytes";
-        break;
-    default:
-        type_name = "unknown";
-        break;
-    }
-    PyDict_SetItemString(dict, "type", PyUnicode_FromString(type_name));
-
-    return dict;
-}
-
-/* ERG.get_unit(name) */
-static PyObject* ERG_get_unit(ERGObject* self, PyObject* args) {
+/* ERG.get_signal_unit(name) */
+static PyObject* ERG_get_signal_unit(ERGObject* self, PyObject* args) {
     const char*      signal_name;
     const ERGSignal* signal;
 
@@ -346,8 +232,75 @@ static PyObject* ERG_get_unit(ERGObject* self, PyObject* args) {
     return PyUnicode_FromString(signal->unit ? signal->unit : "");
 }
 
-/* ERG.list_signals() */
-static PyObject* ERG_list_signals(ERGObject* self, PyObject* Py_UNUSED(args)) {
+/* ERG.get_signal_type(name) - returns numpy dtype */
+static PyObject* ERG_get_signal_type(ERGObject* self, PyObject* args) {
+    const char*      signal_name;
+    const ERGSignal* signal;
+    int              numpy_type;
+    PyArray_Descr*   dtype;
+
+    if (!self->parsed) {
+        PyErr_SetString(PyExc_RuntimeError, "ERG file not loaded");
+        return NULL;
+    }
+
+    if (!PyArg_ParseTuple(args, "s", &signal_name)) {
+        return NULL;
+    }
+
+    signal = erg_get_signal_info(&self->erg, signal_name);
+    if (signal == NULL) {
+        PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
+        return NULL;
+    }
+
+    /* Map ERG type to NumPy type */
+    switch (signal->type) {
+    case ERG_FLOAT:
+        numpy_type = NPY_FLOAT;
+        break;
+    case ERG_DOUBLE:
+        numpy_type = NPY_DOUBLE;
+        break;
+    case ERG_INT:
+        numpy_type = NPY_INT32;
+        break;
+    case ERG_UINT:
+        numpy_type = NPY_UINT32;
+        break;
+    case ERG_SHORT:
+        numpy_type = NPY_INT16;
+        break;
+    case ERG_USHORT:
+        numpy_type = NPY_UINT16;
+        break;
+    case ERG_CHAR:
+        numpy_type = NPY_INT8;
+        break;
+    case ERG_UCHAR:
+        numpy_type = NPY_UINT8;
+        break;
+    case ERG_LONGLONG:
+        numpy_type = NPY_INT64;
+        break;
+    case ERG_ULONGLONG:
+        numpy_type = NPY_UINT64;
+        break;
+    default:
+        PyErr_SetString(PyExc_RuntimeError, "Unsupported signal data type");
+        return NULL;
+    }
+
+    dtype = PyArray_DescrFromType(numpy_type);
+    if (dtype == NULL) {
+        return NULL;
+    }
+
+    return (PyObject*)dtype;
+}
+
+/* ERG.get_signal_names() */
+static PyObject* ERG_get_signal_names(ERGObject* self, PyObject* Py_UNUSED(args)) {
     PyObject* list;
     size_t    i;
 
@@ -373,8 +326,8 @@ static PyObject* ERG_list_signals(ERGObject* self, PyObject* Py_UNUSED(args)) {
     return list;
 }
 
-/* ERG.get_units() */
-static PyObject* ERG_get_units(ERGObject* self, PyObject* Py_UNUSED(args)) {
+/* ERG.get_signal_units() */
+static PyObject* ERG_get_signal_units(ERGObject* self, PyObject* Py_UNUSED(args)) {
     PyObject* dict;
     size_t    i;
 
@@ -406,28 +359,41 @@ static PyObject* ERG_get_units(ERGObject* self, PyObject* Py_UNUSED(args)) {
     return dict;
 }
 
+/* ERG.__getitem__(name) - for dictionary-style access */
+static PyObject* ERG_getitem(ERGObject* self, PyObject* key) {
+    const char* signal_name;
+
+    if (!PyUnicode_Check(key)) {
+        PyErr_SetString(PyExc_TypeError, "Signal name must be a string");
+        return NULL;
+    }
+
+    signal_name = PyUnicode_AsUTF8(key);
+    if (signal_name == NULL) {
+        return NULL;
+    }
+
+    return ERG_get_signal(self, Py_BuildValue("(s)", signal_name));
+}
+
 /* Method definitions */
 static PyMethodDef ERG_methods[] = {
     {"get_signal", (PyCFunction)ERG_get_signal, METH_VARARGS,
      "Get signal data by name as numpy array"},
-    {"get_signal_info", (PyCFunction)ERG_get_signal_info, METH_VARARGS,
-     "Get signal metadata by name"},
-    {"get_unit", (PyCFunction)ERG_get_unit, METH_VARARGS,
-     "Get unit string for signal by name"},
-    {"list_signals", (PyCFunction)ERG_list_signals, METH_NOARGS,
-     "List all signal names in the file"},
-    {"get_units", (PyCFunction)ERG_get_units, METH_NOARGS,
+    {"get_signal_names", (PyCFunction)ERG_get_signal_names, METH_NOARGS,
+     "Get list of all signal names"},
+    {"get_signal_units", (PyCFunction)ERG_get_signal_units, METH_NOARGS,
      "Get dictionary mapping signal names to units"},
+    {"get_signal_unit", (PyCFunction)ERG_get_signal_unit, METH_VARARGS,
+     "Get unit string for a signal by name"},
+    {"get_signal_type", (PyCFunction)ERG_get_signal_type, METH_VARARGS,
+     "Get numpy dtype for a signal by name"},
     {NULL}
 };
 
-/* Property definitions */
-static PyGetSetDef ERG_getsetters[] = {
-    {"signal_names", (getter)ERG_get_signal_names, NULL,
-     "List of all signal names", NULL},
-    {"sample_count", (getter)ERG_get_sample_count, NULL,
-     "Number of samples in the file", NULL},
-    {NULL}
+/* Mapping protocol for dictionary-style access */
+static PyMappingMethods ERG_as_mapping = {
+    .mp_subscript = (binaryfunc)ERG_getitem,
 };
 
 /* Type definition */
@@ -441,7 +407,7 @@ static PyTypeObject ERGType = {
     .tp_init                               = (initproc)ERG_init,
     .tp_dealloc                            = (destructor)ERG_dealloc,
     .tp_methods                            = ERG_methods,
-    .tp_getset                             = ERG_getsetters,
+    .tp_as_mapping                         = &ERG_as_mapping,
 };
 
 /* Module definition */

@@ -9,18 +9,13 @@ import sys
 import argparse
 import time
 from pathlib import Path
+import cmerg
 
 # Add parent directory to path to import erg_python
 sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 from erg_python import ERG
 import matplotlib.pyplot as plt
-
-# Import cmparser for comparison
-
-from cmparser import ERG as CMParserERG
-
-HAS_CMPARSER = True
 
 # Global variable for test file path
 TEST_ERG_FILE = None
@@ -47,15 +42,13 @@ def test_basic():
     print("Loading ERG file...")
     erg = ERG(erg_file)
 
-    # Check sample count
-    print(f"Sample count: {erg.sample_count}")
-
     # Get signal names
-    print(f"Number of signals: {len(erg.signal_names)}")
-    print(f"First 10 signals: {erg.signal_names[:10]}")
+    signal_names = erg.get_signal_names()
+    print(f"Number of signals: {len(signal_names)}")
+    print(f"First 10 signals: {signal_names[:10]}")
 
     # Get a single signal (typically "Time" exists)
-    if "Time" in erg.signal_names:
+    if "Time" in signal_names:
         print("\nGetting 'Time' signal...")
 
         # Time cold retrieval
@@ -76,12 +69,13 @@ def test_basic():
         warm_time = end - start
         print(f"Warm retrieval time: {warm_time:,} ns ({warm_time / 1_000:.3f} µs)")
 
-        # Get signal info
-        info = erg.get_signal_info("Time")
-        print(f"Time signal info: {info}")
+        # Get signal unit and type
+        unit = erg.get_signal_unit("Time")
+        dtype = erg.get_signal_type("Time")
+        print(f"Time signal unit: {unit}, dtype: {dtype}")
 
     # Get multiple signals using list comprehension
-    available_signals = erg.signal_names[:5]
+    available_signals = signal_names[:5]
     print(f"\nGetting multiple signals: {available_signals}")
 
     # Time cold retrieval
@@ -106,11 +100,11 @@ def test_basic():
 
     # Plot signals if they exist
     plot_signals = ["Car.ax", "Car.v", "Car.Distance"]
-    missing_signals = [s for s in plot_signals if s not in erg.signal_names]
+    missing_signals = [s for s in plot_signals if s not in signal_names]
 
     if missing_signals:
         print(f"\nWarning: Cannot plot, missing signals: {missing_signals}")
-    elif "Time" not in erg.signal_names:
+    elif "Time" not in signal_names:
         print("\nWarning: Cannot plot, 'Time' signal not found")
     else:
         print(f"\nPlotting signals: {plot_signals}")
@@ -121,10 +115,10 @@ def test_basic():
 
         for idx, signal_name in enumerate(plot_signals):
             signal_data = erg.get_signal(signal_name)
-            signal_info = erg.get_signal_info(signal_name)
+            signal_unit = erg.get_signal_unit(signal_name)
 
             axes[idx].plot(plot_time, signal_data, linewidth=1.5)
-            axes[idx].set_ylabel(f"{signal_name}\n[{signal_info['unit']}]")
+            axes[idx].set_ylabel(f"{signal_name}\n[{signal_unit}]")
             axes[idx].grid(True, alpha=0.3)
             axes[idx].set_xlim(plot_time[0], plot_time[-1])
 
@@ -148,11 +142,13 @@ def test_signal_info():
     erg = ERG(erg_file)
 
     print("\nSignal metadata for all signals:")
-    for signal_name in erg.signal_names[:10]:  # First 10 signals
-        info = erg.get_signal_info(signal_name)
+    signal_names = erg.get_signal_names()
+    for signal_name in signal_names[:10]:  # First 10 signals
+        unit = erg.get_signal_unit(signal_name)
+        dtype = erg.get_signal_type(signal_name)
         print(f"  {signal_name}:")
-        print(f"    Type: {info['type']}, Size: {info['type_size']} bytes")
-        print(f"    Unit: {info['unit']}, Factor: {info['factor']}, Offset: {info['offset']}")
+        print(f"    Type: {dtype}")
+        print(f"    Unit: {unit}")
 
     return True
 
@@ -183,113 +179,121 @@ def test_error_handling():
     return True
 
 
-def test_numpy_integration():
-    """Test numpy array conversion if numpy is available"""
-    try:
-        import numpy as np
-
-        print("\nNumPy is available, testing numpy integration...")
-
-        erg_file = TEST_ERG_FILE
-        if not erg_file or not erg_file.exists():
-            print(f"Skipping numpy test: test file not available")
-            return False
-
-        erg = ERG(erg_file)
-        if erg.signal_names:
-            signal_name = erg.signal_names[0]
-            data = erg.get_signal(signal_name)
-
-            if isinstance(data, np.ndarray):
-                print(f"  Successfully got numpy array for '{signal_name}'")
-                print(f"  Array shape: {data.shape}, dtype: {data.dtype}")
-                print(f"  Mean: {data.mean():.6f}, Std: {data.std():.6f}")
-                return True
-            else:
-                print(f"  WARNING: Got {type(data)} instead of numpy array")
-                return False
-    except ImportError:
-        print("\nNumPy not available, skipping numpy integration test")
-        return True
-
-
 def test_performance_comparison():
-    """Compare performance between C extension and pure Python cmparser"""
-    if not HAS_CMPARSER:
-        print("\ncmparser not available, skipping performance comparison")
-        return True
-
+    """Compare performance with cmerg package"""
     erg_file = TEST_ERG_FILE
     if not erg_file or not erg_file.exists():
-        print(f"Skipping performance test: test file not available")
+        print(f"Skipping performance comparison: test file not available")
         return False
 
-    print("\n" + "=" * 60)
-    print("Performance Comparison: erg_python (C) vs cmparser (Python)")
-    print("=" * 60)
+    print(f"\n{'=' * 70}")
+    print("PERFORMANCE COMPARISON: erg_python vs cmerg")
+    print(f"{'=' * 70}")
+    print(f"Test file: {erg_file}")
 
-    # Test signals to retrieve
-    test_signals = ["Time", "Car.ax", "Car.v"]
+    # Test signals - use common signals that should exist
+    test_signals = ["Time"]
 
-    # Benchmark C extension (erg_python)
-    print("\n[1] erg_python (C Extension):")
-    print("-" * 40)
+    # ===== ERG_PYTHON TESTS =====
+    print(f"\n{'--- erg_python ---':^70}")
 
-    # File loading + parsing
+    # Clear cache by creating new instance
+    ERG._instances.clear()
+
+    # 1. Loading time
     start = time_ns()
-    erg_c = ERG(erg_file)
-    end = time_ns()
-    c_load_time = end - start
-    print(f"  Load + parse:      {c_load_time:>12,} ns ({c_load_time / 1_000_000:>8.3f} ms)")
+    erg_python = ERG(erg_file)
+    load_time_erg = time_ns() - start
+    print(f"Loading ERG:          {load_time_erg / 1_000_000:>10.3f} ms")
 
-    # Single signal retrieval
-    available_test_signals = [s for s in test_signals if s in erg_c.signal_names]
-    if not available_test_signals:
-        print("Warning: None of the test signals found in file")
-        return False
+    # Get available signals
+    signal_names = erg_python.get_signal_names()
+    print(f"Signal count:         {len(signal_names):>10}")
 
-    signal_times = []
-    for signal_name in available_test_signals:
-        start = time_ns()
-        data = erg_c.get_signal(signal_name)
-        end = time_ns()
-        signal_times.append(end - start)
+    # Use first few signals for testing
+    test_signals = signal_names[: min(5, len(signal_names))]
 
-    c_avg_signal_time = sum(signal_times) / len(signal_times)
-    print(f"  Avg signal:        {c_avg_signal_time:>12,.0f} ns ({c_avg_signal_time / 1_000_000:>8.3f} ms)")
-
-    # Benchmark pure Python (cmparser)
-    print("\n[2] cmparser (Pure Python):")
-    print("-" * 40)
-
-    # File loading + parsing
+    # 2. Cold read (first access)
     start = time_ns()
-    erg_py = CMParserERG(erg_file)
-    end = time_ns()
-    py_load_time = end - start
-    print(f"  Load + parse:      {py_load_time:>12,} ns ({py_load_time / 1_000_000:>8.3f} ms)")
+    for sig in test_signals:
+        _ = erg_python.get_signal(sig)
+    cold_read_erg = time_ns() - start
+    print(f"Cold read ({len(test_signals)} signals): {cold_read_erg / 1_000_000:>10.3f} ms")
+    print(f"  Per signal:         {cold_read_erg / len(test_signals) / 1_000_000:>10.3f} ms")
 
-    # Single signal retrieval
-    signal_times = []
-    for signal_name in available_test_signals:
-        start = time_ns()
-        data = erg_py[signal_name]
-        end = time_ns()
-        signal_times.append(end - start)
+    # 3. Hot read (cached access)
+    start = time_ns()
+    for sig in test_signals:
+        _ = erg_python[sig]
+    hot_read_erg = time_ns() - start
+    print(f"Hot read ({len(test_signals)} signals):  {hot_read_erg / 1_000:>10.3f} µs")
+    print(f"  Per signal:         {hot_read_erg / len(test_signals) / 1_000:>10.3f} µs")
 
-    py_avg_signal_time = sum(signal_times) / len(signal_times)
-    print(f"  Avg signal:        {py_avg_signal_time:>12,.0f} ns ({py_avg_signal_time / 1_000_000:>8.3f} ms)")
+    # ===== CMERG TESTS =====
+    print(f"\n{'--- cmerg ---':^70}")
 
-    # Calculate speedups
-    print("\n" + "=" * 60)
-    print("Speedup (erg_python vs cmparser):")
-    print("=" * 60)
+    # 1. Loading time
+    start = time_ns()
+    erg_cm = cmerg.ERG(str(erg_file))
+    load_time_cm = time_ns() - start
+    print(f"Loading ERG:          {load_time_cm / 1_000_000:>10.3f} ms")
 
-    load_speedup = py_load_time / c_load_time
-    signal_speedup = py_avg_signal_time / c_avg_signal_time
+    # 2. Cold read (first access) - cmerg uses .get() method
+    start = time_ns()
+    for sig in test_signals:
+        signal_obj = erg_cm.get(sig)
+        # Access the actual data to ensure it's loaded
+        _ = signal_obj.samples
+    cold_read_cm = time_ns() - start
+    print(f"Cold read ({len(test_signals)} signals): {cold_read_cm / 1_000_000:>10.3f} ms")
+    print(f"  Per signal:         {cold_read_cm / len(test_signals) / 1_000_000:>10.3f} ms")
 
-    print(f"  Load + parse:  {load_speedup:>6.2f}x faster")
-    print(f"  Signal access: {signal_speedup:>6.2f}x faster")
+    # 3. Hot read (cached access)
+    start = time_ns()
+    for sig in test_signals:
+        signal_obj = erg_cm.get(sig)
+        _ = signal_obj.samples
+    hot_read_cm = time_ns() - start
+    print(f"Hot read ({len(test_signals)} signals):  {hot_read_cm / 1_000:>10.3f} µs")
+    print(f"  Per signal:         {hot_read_cm / len(test_signals) / 1_000:>10.3f} µs")
+
+    # ===== COMPARISON SUMMARY =====
+    print(f"\n{'=' * 70}")
+    print("SPEEDUP SUMMARY (erg_python vs cmerg)")
+    print(f"{'=' * 70}")
+
+    load_speedup = load_time_cm / load_time_erg
+    cold_speedup = cold_read_cm / cold_read_erg
+    hot_speedup = hot_read_cm / hot_read_erg
+
+    print(f"Loading:              {load_speedup:>10.2f}x {'faster' if load_speedup > 1 else 'slower'}")
+    print(f"Cold read:            {cold_speedup:>10.2f}x {'faster' if cold_speedup > 1 else 'slower'}")
+    print(f"Hot read:             {hot_speedup:>10.2f}x {'faster' if hot_speedup > 1 else 'slower'}")
+
+    # Verify data integrity
+    print(f"\n{'=' * 70}")
+    print("DATA INTEGRITY CHECK")
+    print(f"{'=' * 70}")
+
+    all_match = True
+    for sig in test_signals[:3]:  # Check first 3 signals
+        data_erg = erg_python[sig]
+        data_cm = erg_cm.get(sig).samples  # cmerg returns Signal object with .samples property
+
+        if len(data_erg) != len(data_cm):
+            print(f"✗ {sig}: Length mismatch ({len(data_erg)} vs {len(data_cm)})")
+            all_match = False
+        elif not (data_erg == data_cm).all():
+            import numpy as np
+
+            max_diff = np.abs(data_erg - data_cm).max()
+            print(f"✗ {sig}: Data mismatch (max diff: {max_diff})")
+            all_match = False
+        else:
+            print(f"✓ {sig}: Data matches")
+
+    if all_match:
+        print("\nAll tested signals match between erg_python and cmerg!")
 
     return True
 
@@ -319,7 +323,6 @@ Examples:
         ("Basic functionality", test_basic),
         ("Signal info", test_signal_info),
         ("Error handling", test_error_handling),
-        ("NumPy integration", test_numpy_integration),
         ("Performance comparison", test_performance_comparison),
     ]
 

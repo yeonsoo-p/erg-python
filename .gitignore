@@ -50,6 +50,7 @@ build*/
 venv*/
 .claude
 .vscode
+.ruff_cache
 
 # Python build artifacts
 *.pyd
