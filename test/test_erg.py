@@ -293,8 +293,6 @@ def test_performance_comparison():
     erg2 = ERG(erg_file)
     erg2.get_all_signals()
     signal_names = erg2.get_signal_names()
-    erg2.get_signal_factors()
-    erg2.get_signal_offsets()
     load_time_2 = time_ns() - start
     mem_after_load_2 = get_memory_usage_mb()
 

@@ -23,14 +23,16 @@ class ERG:
     parsed upon initialization. Uses memory-mapped I/O for efficient access.
 
     Instances are cached by filepath - creating multiple ERG objects with the
-    same filepath will return the same cached instance.
+    same filepath will return the same cached instance. This means all caches
+    (including the structured array cache from get_all_signals()) persist across
+    instantiations. To clear caches, use ERG._instances.clear().
 
     Example:
         >>> from erg_python import ERG
         >>> erg = ERG("simulation.erg")
         >>> time = erg.get_signal("Time")
         >>> velocity = erg["Car.v"]  # Dictionary-style access
-        >>> df = erg.get_all_signals()  # Get all signals as DataFrame
+        >>> data = erg.get_all_signals()  # Get all signals as structured array
     """
 
     _instances: dict[Path, "ERG"] = {}
@@ -76,6 +78,8 @@ class ERG:
             self._factors_cache: dict[str, float] = {}
             self._offsets_cache: dict[str, float] = {}
 
+        self.get_all_signals()
+
     def get_signal(self, signal_name: str) -> np.ndarray:
         """
         Get signal data by name.
@@ -101,16 +105,11 @@ class ERG:
             >>> print(f"Max velocity: {max(velocity):.2f}, dtype: {velocity.dtype}")
         """
         # Check if structured array cache exists
-        if self._struct_array_cache is not None:
-            # Extract raw data from cached structured array by field name
-            try:
-                raw_data = self._struct_array_cache[signal_name]
-            except ValueError as e:
-                # Convert ValueError to KeyError for consistency
-                raise KeyError(f"Signal '{signal_name}' not found") from e
-        else:
-            # Fetch raw data from C
-            raw_data = self._erg.get_signal(signal_name)
+        try:
+            raw_data = self._struct_array_cache[signal_name]
+        except ValueError as e:
+            # Convert ValueError to KeyError for consistency
+            raise KeyError(f"Signal '{signal_name}' not found") from e
 
         # Get scaling parameters
         factor = self.get_signal_factor(signal_name)
@@ -130,7 +129,14 @@ class ERG:
 
         Returns a structured array where each field is a signal with its native
         data type. This is a zero-copy view of the memory-mapped data with raw
-        values (no scaling applied). The result is cached for future get_signal() calls.
+        values (no scaling applied).
+
+        IMPORTANT: Direct field access (data['signal_name']) returns RAW unscaled
+        values from the file. Use get_signal('signal_name') to get properly scaled
+        values with factor and offset applied.
+
+        The result is cached for future get_signal() calls, which will then use
+        this structured array as the data source and apply scaling dynamically.
 
         Returns:
             Structured NumPy array with shape (sample_count,)
@@ -140,8 +146,8 @@ class ERG:
             >>> data = erg.get_all_signals()  # Returns structured array
             >>> print(f"Shape: {data.shape}")  # (samples,)
             >>> print(f"Fields: {data.dtype.names}")  # ('Time', 'Car.v', ...)
-            >>> time = data['Time']  # Access by field name (raw data)
-            >>> velocity = data['Car.v']  # Raw data - use get_signal() for scaled
+            >>> time_raw = data['Time']  # Direct access: raw unscaled data
+            >>> time_scaled = erg.get_signal('Time')  # Scaled data (recommended)
         """
         # Get and cache raw structured array from C (zero-copy view) if not already cached
         if self._struct_array_cache is None:
