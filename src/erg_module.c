@@ -21,8 +21,10 @@ static PyObject* ERG_new(PyTypeObject* type, PyObject* Py_UNUSED(args), PyObject
     ERGObject* self;
     self = (ERGObject*)type->tp_alloc(type, 0);
     if (self != NULL) {
-        self->initialized = 0;
-        self->parsed      = 0;
+        self->initialized               = 0;
+        self->parsed                    = 0;
+        self->supported_signal_count    = 0;
+        self->supported_signal_indices  = NULL;
         memset(&self->erg, 0, sizeof(ERG));
     }
     return (PyObject*)self;
@@ -142,17 +144,23 @@ ERG_FASTCALL(ERG_get_signal) {
     ERG_CHECK_ARGTYPE(0, PyUnicode_Check, "a string");
     ERG_GET_STRING_ARG(signal_name, 0);
 
-    /* Get signal info to determine type */
+    /* Get signal info to determine type and check if signal exists */
     signal_info = erg_get_signal_info(&self->erg, signal_name);
     if (signal_info == NULL) {
         PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
         return NULL;
     }
 
+    /* Check if this is a raw byte type (not supported) */
+    if (is_raw_byte_type(signal_info->type)) {
+        PyErr_Format(PyExc_ValueError, "Signal '%s' has unsupported raw byte type", signal_name);
+        return NULL;
+    }
+
     /* Get signal data (returns void* in native type with scaling applied) */
     data = erg_get_signal(&self->erg, signal_name);
     if (data == NULL) {
-        PyErr_Format(PyExc_KeyError, "Signal '%s' not found", signal_name);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to extract signal data");
         return NULL;
     }
 
