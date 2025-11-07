@@ -8,8 +8,8 @@ Example:
     >>> from erg_python import ERG
     >>> erg = ERG("path/to/file.erg")
     >>> time = erg.get_signal("Time")
-    >>> velocity = erg.get_signal("Car.v")
-    >>> signals = erg.get_signals(["Time", "Car.v", "Car.ax"])
+    >>> velocity = erg["Car.v"]  # Dictionary-style access
+    >>> all_signals = erg.get_all_signals()  # Get all as structured array
 """
 
 from .erg import ERG

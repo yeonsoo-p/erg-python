@@ -130,14 +130,15 @@ static void ERG_dealloc(ERGObject* self) {
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-/* ERG.get_signal(name) -> numpy array */
+/* ERG.get_signal(name) -> numpy array (raw unscaled zero-copy view) */
 ERG_FASTCALL(ERG_get_signal) {
     const char*      signal_name;
-    void*            data;
     const ERGSignal* signal_info;
     int              numpy_type;
     npy_intp         dims[1];
+    npy_intp         strides[1];
     PyObject*        array;
+    const char*      data_ptr;
 
     ERG_CHECK_PARSED;
     ERG_CHECK_NARGS(1);
@@ -154,13 +155,6 @@ ERG_FASTCALL(ERG_get_signal) {
     /* Check if this is a raw byte type (not supported) */
     if (is_raw_byte_type(signal_info->type)) {
         PyErr_Format(PyExc_ValueError, "Signal '%s' has unsupported raw byte type", signal_name);
-        return NULL;
-    }
-
-    /* Get signal data (returns void* in native type with scaling applied) */
-    data = erg_get_signal(&self->erg, signal_name);
-    if (data == NULL) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to extract signal data");
         return NULL;
     }
 
@@ -197,23 +191,28 @@ ERG_FASTCALL(ERG_get_signal) {
         numpy_type = NPY_UINT64;
         break;
     default:
-        free(data);
         PyErr_SetString(PyExc_RuntimeError, "Unsupported signal data type");
         return NULL;
     }
 
-    /* Create NumPy array directly from C data with native type */
-    dims[0] = (npy_intp)self->erg.sample_count;
-    array   = PyArray_SimpleNewFromData(1, dims, numpy_type, data);
+    /* Create zero-copy strided view of the signal column from memory-mapped data */
+    data_ptr   = (const char*)self->erg.mapped_file.data + 16 + signal_info->data_offset; /* Skip 16-byte header */
+    dims[0]    = (npy_intp)self->erg.sample_count;
+    strides[0] = (npy_intp)self->erg.row_size; /* Stride to next sample */
+
+    array = PyArray_New(&PyArray_Type, 1, dims, numpy_type, strides, (void*)data_ptr, 0, NPY_ARRAY_ALIGNED, NULL);
 
     if (array == NULL) {
-        free(data);
         PyErr_SetString(PyExc_RuntimeError, "Failed to create NumPy array");
         return NULL;
     }
 
-    /* Set the array to own the data so it gets freed when array is destroyed */
-    PyArray_ENABLEFLAGS((PyArrayObject*)array, NPY_ARRAY_OWNDATA);
+    /* Set base object to keep ERG file mapped while array is alive */
+    if (PyArray_SetBaseObject((PyArrayObject*)array, (PyObject*)self) < 0) {
+        Py_DECREF(array);
+        return NULL;
+    }
+    Py_INCREF(self); /* Base object takes a reference */
 
     return array;
 }
