@@ -77,9 +77,14 @@ erg = ERG("simulation.erg")
 signal_names = erg.get_signal_names()
 print(f"Found {len(signal_names)} signals")
 
+# Check if signals exist
+if "Car.v" in erg:
+    velocity = erg["Car.v"]
+    print(f"Velocity found: {len(velocity)} samples")
+
 # Access individual signals
 time = erg.get_signal("Time")
-velocity = erg["Car.v"]  # Alternative syntax
+velocity = erg["Car.v"]  # Dictionary-style access
 
 # Get signal metadata
 unit = erg.get_signal_unit("Car.v")
@@ -88,6 +93,25 @@ factor = erg.get_signal_factor("Car.v")
 offset = erg.get_signal_offset("Car.v")
 
 print(f"Velocity: {len(velocity)} samples, unit: {unit}, dtype: {dtype}")
+```
+
+### Checking Signal Existence
+
+```python
+# Check if a signal exists before accessing it
+if "Car.v" in erg:
+    velocity = erg["Car.v"]
+else:
+    print("Velocity signal not found")
+
+# Safe access pattern - avoid KeyError
+optional_signals = ["Car.v", "Car.ax", "MaybeExists", "Car.Distance"]
+data = {}
+for signal_name in optional_signals:
+    if signal_name in erg:
+        data[signal_name] = erg[signal_name]
+
+print(f"Found {len(data)} out of {len(optional_signals)} signals")
 ```
 
 ### Working with Multiple Signals
@@ -187,13 +211,14 @@ time_scaled = erg.get_signal("Time")  # Scaled data (factor & offset applied)
 #### Constructor
 
 ```python
-ERG(filepath: str | Path)
+ERG(filepath: str | Path, prefetch: bool = False)
 ```
 
 Opens and parses an ERG file. Files are automatically cached - creating multiple ERG objects with the same filepath returns the same cached instance.
 
 **Parameters:**
 - `filepath`: Path to the .erg file (string or Path object)
+- `prefetch`: If True, call `get_all_signals()` during initialization to populate the cache (default: False)
 
 **Raises:**
 - `FileNotFoundError`: If the ERG file or its .info file is not found
@@ -201,7 +226,7 @@ Opens and parses an ERG file. Files are automatically cached - creating multiple
 
 #### Methods
 
-##### `get_signal(signal_name: str) -> np.ndarray`
+##### `get_signal(signal_name: str) -> npt.NDArray[Any]`
 
 Get signal data by name with scaling applied.
 
@@ -216,14 +241,14 @@ Returns a zero-copy memory-mapped view of the signal data with factor and offset
 **Raises:**
 - `KeyError`: If the signal name is not found
 
-##### `get_all_signals() -> np.ndarray`
+##### `get_all_signals() -> npt.NDArray[np.void]`
 
 Get all signals as a structured NumPy array.
 
 Returns a zero-copy memory-mapped view of all signal data as a structured array. The array is cached on first call. **Important:** Direct field access returns RAW unscaled data. Use `get_signal()` for scaled data.
 
 **Returns:**
-- Structured NumPy array with shape (sample_count,)
+- Structured NumPy array with shape (sample_count,) and dtype with named fields
 
 ##### `get_signal_names() -> list[str]`
 
@@ -233,7 +258,7 @@ Get list of all signal names in the file.
 
 Get the unit string for a signal (e.g., "m/s", "s", "rad").
 
-##### `get_signal_type(signal_name: str) -> np.dtype`
+##### `get_signal_type(signal_name: str) -> np.dtype[Any]`
 
 Get the NumPy dtype for a signal.
 
@@ -252,17 +277,41 @@ Get the index of a signal by name.
 ##### Batch Metadata Methods
 
 ```python
-get_signal_units() -> dict[str, str]      # All signal units
-get_signal_types() -> dict[str, np.dtype]  # All signal types
-get_signal_factors() -> dict[str, float]   # All scaling factors
-get_signal_offsets() -> dict[str, float]   # All scaling offsets
+get_signal_units() -> dict[str, str]           # All signal units
+get_signal_types() -> dict[str, np.dtype[Any]]  # All signal types
+get_signal_factors() -> dict[str, float]        # All scaling factors
+get_signal_offsets() -> dict[str, float]        # All scaling offsets
 ```
 
-#### Dictionary-style Access
+#### Special Methods
+
+##### Dictionary-style Access
 
 ```python
 erg["signal_name"]  # Equivalent to erg.get_signal("signal_name")
 ```
+
+##### Membership Testing
+
+```python
+"signal_name" in erg  # Returns True if signal exists, False otherwise
+```
+
+Check if a signal exists in the ERG file using the `in` operator. This is useful for safely handling optional signals without raising `KeyError`.
+
+**Example:**
+```python
+if "Car.v" in erg:
+    velocity = erg["Car.v"]
+```
+
+##### String Representation
+
+```python
+repr(erg)  # Returns "ERG(signals=N)" where N is the signal count
+```
+
+Returns a string representation of the ERG object showing the number of signals. If the file is not loaded or an error occurred, returns an error message instead.
 
 ## Performance
 

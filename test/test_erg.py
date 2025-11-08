@@ -12,8 +12,10 @@ import gc
 import psutil
 import os
 from pathlib import Path
+from typing import Any
 import cmerg
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -24,7 +26,7 @@ from erg_python import ERG
 
 
 # Global variable for test file path
-TEST_ERG_FILE = None
+TEST_ERG_FILE: Path | None = None
 
 
 def time_ns() -> int:
@@ -38,12 +40,12 @@ def get_memory_usage_mb() -> float:
     return process.memory_info().rss / (1024**2)
 
 
-def test_basic():
+def test_basic() -> bool:
     """Test basic ERG file reading"""
-    erg_file = TEST_ERG_FILE
+    erg_file: Path | None = TEST_ERG_FILE
 
     if not erg_file or not erg_file.exists():
-        print(f"ERROR: Test file not found or not specified: {erg_file}")
+        print(f"[FAIL] Test file not found or not specified: {erg_file}")
         print("Usage: python test_erg.py <path/to/test.erg>")
         return False
 
@@ -52,10 +54,10 @@ def test_basic():
     # Create ERG object (should auto-parse now)
     # Can pass Path object directly now
     print("Loading ERG file...")
-    erg = ERG(erg_file)
+    erg: ERG = ERG(erg_file)
 
     # Get signal names
-    signal_names = erg.get_signal_names()
+    signal_names: list[str] = erg.get_signal_names()
     print(f"Number of signals: {len(signal_names)}")
     print(f"First 10 signals: {signal_names[:10]}")
 
@@ -64,10 +66,10 @@ def test_basic():
         print("\nGetting 'Time' signal...")
 
         # Time cold retrieval
-        start = time_ns()
-        time_data = erg.get_signal("Time")
-        end = time_ns()
-        cold_time = end - start
+        start: int = time_ns()
+        time_data: npt.NDArray[Any] = erg.get_signal("Time")
+        end: int = time_ns()
+        cold_time: int = end - start
 
         print(f"Time data type: {type(time_data)}")
         print(f"Time length: {len(time_data)}")
@@ -87,14 +89,14 @@ def test_basic():
         print(f"Time signal unit: {unit}, dtype: {dtype}")
 
     # Get multiple signals using list comprehension
-    available_signals = signal_names[:5]
+    available_signals: list[str] = signal_names[:5]
     print(f"\nGetting multiple signals: {available_signals}")
 
     # Time cold retrieval
     start = time_ns()
-    signals = [erg.get_signal(name) for name in available_signals]
+    signals: list[npt.NDArray[Any]] = [erg.get_signal(name) for name in available_signals]
     end = time_ns()
-    batch_cold_time = end - start
+    batch_cold_time: int = end - start
 
     for name, data in zip(available_signals, signals):
         print(f"  {name}: type={type(data).__name__}, dtype={data.dtype}, length={len(data)}")
@@ -114,9 +116,9 @@ def test_basic():
     return True
 
 
-def test_signal_info():
+def test_signal_info() -> bool:
     """Test signal metadata retrieval"""
-    erg_file = TEST_ERG_FILE
+    erg_file: Path | None = TEST_ERG_FILE
 
     if not erg_file or not erg_file.exists():
         print("Skipping test_signal_info: test file not available")
@@ -136,9 +138,9 @@ def test_signal_info():
     return True
 
 
-def test_get_all_signals():
+def test_get_all_signals() -> bool:
     """Test get_all_signals() structured array functionality"""
-    erg_file = TEST_ERG_FILE
+    erg_file: Path | None = TEST_ERG_FILE
     if not erg_file or not erg_file.exists():
         print("Skipping test_get_all_signals: test file not available")
         return False
@@ -174,35 +176,35 @@ def test_get_all_signals():
     return True
 
 
-def test_error_handling():
+def test_error_handling() -> bool:
     """Test error handling"""
     print("\nTesting error handling...")
 
     # Test with non-existent file
     try:
         erg = ERG("nonexistent.erg")
-        print("ERROR: Should have raised an exception for non-existent file")
+        print("  [FAIL] Should have raised an exception for non-existent file")
         return False
     except Exception as e:
-        print(f"  Correctly raised exception for non-existent file: {type(e).__name__}")
+        print(f"  [OK] Correctly raised exception for non-existent file: {type(e).__name__}")
 
     # Test with non-existent signal
-    erg_file = TEST_ERG_FILE
+    erg_file: Path | None = TEST_ERG_FILE
     if erg_file and erg_file.exists():
         erg = ERG(erg_file)
         try:
             _ = erg.get_signal("NonExistentSignal12345")
-            print("ERROR: Should have raised KeyError for non-existent signal")
+            print("  [FAIL] Should have raised KeyError for non-existent signal")
             return False
         except KeyError as e:
-            print(f"  Correctly raised KeyError for non-existent signal: {e}")
+            print(f"  [OK] Correctly raised KeyError for non-existent signal: {e}")
 
     return True
 
 
-def test_raw_byte_type_handling():
+def test_raw_byte_type_handling() -> bool:
     """Test that raw byte type signals are properly filtered and handled"""
-    erg_file = TEST_ERG_FILE
+    erg_file: Path | None = TEST_ERG_FILE
     if not erg_file or not erg_file.exists():
         print("Skipping test_raw_byte_type_handling: test file not available")
         return False
@@ -228,10 +230,10 @@ def test_raw_byte_type_handling():
                 exposed_raw_bytes.append(name)
 
     if exposed_raw_bytes:
-        print(f"  ERROR: Found {len(exposed_raw_bytes)} raw byte type signals exposed: {exposed_raw_bytes[:5]}")
+        print(f"  [FAIL] Found {len(exposed_raw_bytes)} raw byte type signals exposed: {exposed_raw_bytes[:5]}")
         return False
     else:
-        print("  OK: No raw byte type signals exposed in get_signal_names()")
+        print("  [OK] No raw byte type signals exposed in get_signal_names()")
 
     # Verify get_signal_types() doesn't return raw byte types
     raw_byte_in_types = []
@@ -241,19 +243,19 @@ def test_raw_byte_type_handling():
             raw_byte_in_types.append(name)
 
     if raw_byte_in_types:
-        print(f"  ERROR: Found raw byte types in get_signal_types(): {raw_byte_in_types[:5]}")
+        print(f"  [FAIL] Found raw byte types in get_signal_types(): {raw_byte_in_types[:5]}")
         return False
     else:
-        print("  OK: No raw byte types in get_signal_types()")
+        print("  [OK] No raw byte types in get_signal_types()")
 
     # Verify get_all_signals() doesn't include raw byte types
     all_data = erg.get_all_signals()
     if all_data.dtype.names:
         if len(all_data.dtype.names) != len(signal_names):
-            print(f"  ERROR: get_all_signals() field count ({len(all_data.dtype.names)}) != signal_names count ({len(signal_names)})")
+            print(f"  [FAIL] get_all_signals() field count ({len(all_data.dtype.names)}) != signal_names count ({len(signal_names)})")
             return False
         else:
-            print(f"  OK: get_all_signals() has {len(all_data.dtype.names)} fields (matches filtered count)")
+            print(f"  [OK] get_all_signals() has {len(all_data.dtype.names)} fields (matches filtered count)")
 
     # Verify that all signals can be retrieved without errors
     print("  Testing retrieval of first 10 signals...")
@@ -267,12 +269,12 @@ def test_raw_byte_type_handling():
             errors.append(f"{signal_name}: {type(e).__name__}: {e}")
 
     if errors:
-        print("  ERROR: Failed to retrieve some signals:")
+        print("  [FAIL] Failed to retrieve some signals:")
         for error in errors:
             print(f"    - {error}")
         return False
     else:
-        print("  OK: All tested signals retrieved successfully")
+        print("  [OK] All tested signals retrieved successfully")
 
     # Verify consistency across all API methods
     print("  Testing consistency across API methods...")
@@ -290,18 +292,18 @@ def test_raw_byte_type_handling():
     }
 
     if len(set(counts.values())) != 1:
-        print(f"  ERROR: Inconsistent counts across API methods: {counts}")
+        print(f"  [FAIL] Inconsistent counts across API methods: {counts}")
         return False
     else:
-        print(f"  OK: All API methods return consistent count of {counts['signal_names']} signals")
+        print(f"  [OK] All API methods return consistent count of {counts['signal_names']} signals")
 
     print("\n  Test passed!")
     return True
 
 
-def test_pandas_conversion():
+def test_pandas_conversion() -> bool:
     """Test pandas DataFrame conversion with filtered signals"""
-    erg_file = TEST_ERG_FILE
+    erg_file: Path | None = TEST_ERG_FILE
     if not erg_file or not erg_file.exists():
         print("Skipping test_pandas_conversion: test file not available")
         return False
@@ -317,10 +319,10 @@ def test_pandas_conversion():
     try:
         time_signal = erg.get_signal("Time")
         time_series = pd.Series(time_signal, name="Time")
-        print(f"    OK: Created pandas Series with {len(time_series)} samples")
+        print(f"    [OK] Created pandas Series with {len(time_series)} samples")
         print(f"    Dtype: {time_series.dtype}")
     except Exception as e:
-        print(f"    ERROR: {type(e).__name__}: {e}")
+        print(f"    [FAIL] {type(e).__name__}: {e}")
         return False
 
     # Test 2: Multiple signals to DataFrame (manual approach)
@@ -332,10 +334,10 @@ def test_pandas_conversion():
             data_dict[sig_name] = erg.get_signal(sig_name)
 
         df = pd.DataFrame(data_dict)
-        print(f"    OK: Created DataFrame with {len(df)} rows and {len(df.columns)} columns")
+        print(f"    [OK] Created DataFrame with {len(df)} rows and {len(df.columns)} columns")
         print(f"    Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
     except Exception as e:
-        print(f"    ERROR: {type(e).__name__}: {e}")
+        print(f"    [FAIL] {type(e).__name__}: {e}")
         return False
 
     # Test 3: Convert get_all_signals() structured array to DataFrame
@@ -343,11 +345,11 @@ def test_pandas_conversion():
     try:
         all_data = erg.get_all_signals()
         df_all = pd.DataFrame(all_data)
-        print("    OK: Created DataFrame from structured array")
+        print("    [OK] Created DataFrame from structured array")
         print(f"    Shape: {df_all.shape}")
         print(f"    Memory usage: {df_all.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
     except Exception as e:
-        print(f"    ERROR: {type(e).__name__}: {e}")
+        print(f"    [FAIL] {type(e).__name__}: {e}")
         return False
 
     # Test 4: Time-indexed DataFrame
@@ -358,13 +360,13 @@ def test_pandas_conversion():
 
         if "Time" in df_indexed.columns:
             df_indexed = df_indexed.set_index("Time")
-            print("    OK: Created time-indexed DataFrame")
+            print("    [OK] Created time-indexed DataFrame")
             print(f"    Shape: {df_indexed.shape}")
             print(f"    Time range: {df_indexed.index[0]:.3f} to {df_indexed.index[-1]:.3f} seconds")
         else:
             print("    WARNING: Time signal not available for indexing")
     except Exception as e:
-        print(f"    ERROR: {type(e).__name__}: {e}")
+        print(f"    [FAIL] {type(e).__name__}: {e}")
         return False
 
     # Test 5: Filtering and slicing
@@ -378,17 +380,17 @@ def test_pandas_conversion():
 
             # Time-based slicing
             df_slice = df_indexed.loc[10:20]  # From 10s to 20s
-            print(f"    OK: Time slice (10s-20s) has {len(df_slice)} rows")
+            print(f"    [OK] Time slice (10s-20s) has {len(df_slice)} rows")
 
             # Select specific columns
             car_signals = [col for col in df.columns if col.startswith("Car.")]
             if car_signals:
-                print(f"    OK: Found {len(car_signals)} Car.* signals")
+                print(f"    [OK] Found {len(car_signals)} Car.* signals")
                 print(f"    Car signals sample: {car_signals[:3]}")
         else:
             print("    WARNING: Time signal not available")
     except Exception as e:
-        print(f"    ERROR: {type(e).__name__}: {e}")
+        print(f"    [FAIL] {type(e).__name__}: {e}")
         return False
 
     # Test 6: Verify no raw byte types in DataFrame
@@ -407,13 +409,13 @@ def test_pandas_conversion():
                 raw_byte_cols.append(col)
 
         if raw_byte_cols:
-            print(f"    ERROR: Found {len(raw_byte_cols)} raw byte columns: {raw_byte_cols[:5]}")
+            print(f"    [FAIL] Found {len(raw_byte_cols)} raw byte columns: {raw_byte_cols[:5]}")
             return False
         else:
-            print("    OK: No raw byte type columns found in DataFrame")
+            print("    [OK] No raw byte type columns found in DataFrame")
             print(f"    All {len(df.columns)} columns have supported dtypes")
     except Exception as e:
-        print(f"    ERROR: {type(e).__name__}: {e}")
+        print(f"    [FAIL] {type(e).__name__}: {e}")
         return False
 
     # Test 7: Export to CSV (sample)
@@ -426,23 +428,289 @@ def test_pandas_conversion():
         csv_str = df.head(5).to_csv(index=False)
         lines = csv_str.split("\n")
         num_cols = len(lines[0].split(","))
-        print("    OK: DataFrame can be exported to CSV")
+        print("    [OK] DataFrame can be exported to CSV")
         print(f"    Number of columns in CSV: {num_cols}")
 
         if num_cols != len(signal_names):
-            print(f"    ERROR: CSV column count ({num_cols}) != signal count ({len(signal_names)})")
+            print(f"    [FAIL] CSV column count ({num_cols}) != signal count ({len(signal_names)})")
             return False
     except Exception as e:
-        print(f"    ERROR: {type(e).__name__}: {e}")
+        print(f"    [FAIL] {type(e).__name__}: {e}")
         return False
 
     print("\n  All pandas conversion tests passed!")
     return True
 
 
-def test_performance_comparison():
+def test_batch_metadata_methods() -> bool:
+    """Test batch metadata retrieval methods"""
+    erg_file: Path | None = TEST_ERG_FILE
+    if not erg_file or not erg_file.exists():
+        print("Skipping test_batch_metadata_methods: test file not available")
+        return False
+
+    print("\nTesting batch metadata methods...")
+    erg = ERG(erg_file)
+
+    signal_names = erg.get_signal_names()
+    print(f"  Total signals: {len(signal_names)}")
+
+    # Test get_signal_units()
+    print("\n  Test 1: get_signal_units()")
+    units = erg.get_signal_units()
+    if not isinstance(units, dict):
+        print(f"    [FAIL] get_signal_units() returned {type(units)}, expected dict")
+        return False
+    if len(units) != len(signal_names):
+        print(f"    [FAIL] get_signal_units() returned {len(units)} units, expected {len(signal_names)}")
+        return False
+    print(f"    [OK] Retrieved {len(units)} signal units")
+    print(f"    Sample units: {list(units.items())[:3]}")
+
+    # Test get_signal_types()
+    print("\n  Test 2: get_signal_types()")
+    types = erg.get_signal_types()
+    if not isinstance(types, dict):
+        print(f"    [FAIL] get_signal_types() returned {type(types)}, expected dict")
+        return False
+    if len(types) != len(signal_names):
+        print(f"    [FAIL] get_signal_types() returned {len(types)} types, expected {len(signal_names)}")
+        return False
+    print(f"    [OK] Retrieved {len(types)} signal types")
+    print(f"    Sample types: {list(types.items())[:3]}")
+
+    # Test get_signal_factors()
+    print("\n  Test 3: get_signal_factors()")
+    factors = erg.get_signal_factors()
+    if not isinstance(factors, dict):
+        print(f"    [FAIL] get_signal_factors() returned {type(factors)}, expected dict")
+        return False
+    if len(factors) != len(signal_names):
+        print(f"    [FAIL] get_signal_factors() returned {len(factors)} factors, expected {len(signal_names)}")
+        return False
+    print(f"    [OK] Retrieved {len(factors)} signal factors")
+    # Check that factors are numbers
+    sample_factors = list(factors.values())[:5]
+    for factor in sample_factors:
+        if not isinstance(factor, (int, float)):
+            print(f"    [FAIL] Factor {factor} is not a number")
+            return False
+    print(f"    Sample factors: {sample_factors}")
+
+    # Test get_signal_offsets()
+    print("\n  Test 4: get_signal_offsets()")
+    offsets = erg.get_signal_offsets()
+    if not isinstance(offsets, dict):
+        print(f"    [FAIL] get_signal_offsets() returned {type(offsets)}, expected dict")
+        return False
+    if len(offsets) != len(signal_names):
+        print(f"    [FAIL] get_signal_offsets() returned {len(offsets)} offsets, expected {len(signal_names)}")
+        return False
+    print(f"    [OK] Retrieved {len(offsets)} signal offsets")
+    # Check that offsets are numbers
+    sample_offsets = list(offsets.values())[:5]
+    for offset in sample_offsets:
+        if not isinstance(offset, (int, float)):
+            print(f"    [FAIL] Offset {offset} is not a number")
+            return False
+    print(f"    Sample offsets: {sample_offsets}")
+
+    # Test consistency between batch and individual methods
+    print("\n  Test 5: Consistency between batch and individual methods")
+    test_signals = signal_names[:10]
+    all_consistent = True
+
+    for sig_name in test_signals:
+        # Check units
+        if units[sig_name] != erg.get_signal_unit(sig_name):
+            print(f"    [FAIL] Unit mismatch for {sig_name}")
+            all_consistent = False
+            break
+
+        # Check types
+        if types[sig_name] != erg.get_signal_type(sig_name):
+            print(f"    [FAIL] Type mismatch for {sig_name}")
+            all_consistent = False
+            break
+
+        # Check factors
+        if factors[sig_name] != erg.get_signal_factor(sig_name):
+            print(f"    [FAIL] Factor mismatch for {sig_name}")
+            all_consistent = False
+            break
+
+        # Check offsets
+        if offsets[sig_name] != erg.get_signal_offset(sig_name):
+            print(f"    [FAIL] Offset mismatch for {sig_name}")
+            all_consistent = False
+            break
+
+    if all_consistent:
+        print(f"    [OK] Batch and individual methods return consistent results")
+    else:
+        return False
+
+    print("\n  [OK] All batch metadata tests passed!")
+    return True
+
+
+def test_signal_index() -> bool:
+    """Test get_signal_index() method"""
+    erg_file: Path | None = TEST_ERG_FILE
+    if not erg_file or not erg_file.exists():
+        print("Skipping test_signal_index: test file not available")
+        return False
+
+    print("\nTesting get_signal_index()...")
+    erg = ERG(erg_file)
+
+    signal_names = erg.get_signal_names()
+    print(f"  Total signals: {len(signal_names)}")
+
+    # Test valid indices
+    print("\n  Test 1: Valid signal indices")
+    for i, sig_name in enumerate(signal_names[:10]):
+        idx = erg.get_signal_index(sig_name)
+        if idx != i:
+            print(f"    [FAIL] Signal {sig_name} has index {idx}, expected {i}")
+            return False
+    print(f"    [OK] First 10 signals have correct indices")
+
+    # Test last signal
+    print("\n  Test 2: Last signal index")
+    last_signal = signal_names[-1]
+    last_idx = erg.get_signal_index(last_signal)
+    expected_idx = len(signal_names) - 1
+    if last_idx != expected_idx:
+        print(f"    [FAIL] Last signal has index {last_idx}, expected {expected_idx}")
+        return False
+    print(f"    [OK] Last signal '{last_signal}' has index {last_idx}")
+
+    # Test non-existent signal
+    print("\n  Test 3: Non-existent signal raises KeyError")
+    try:
+        _ = erg.get_signal_index("NonExistentSignal12345")
+        print("    [FAIL] Should have raised KeyError for non-existent signal")
+        return False
+    except KeyError as e:
+        print(f"    [OK] Correctly raised KeyError: {e}")
+
+    print("\n  [OK] All signal index tests passed!")
+    return True
+
+
+def test_special_methods() -> bool:
+    """Test special methods (__contains__, __getitem__, __repr__)"""
+    erg_file: Path | None = TEST_ERG_FILE
+    if not erg_file or not erg_file.exists():
+        print("Skipping test_special_methods: test file not available")
+        return False
+
+    print("\nTesting special methods...")
+    erg = ERG(erg_file)
+
+    signal_names = erg.get_signal_names()
+
+    # Test __contains__
+    print("\n  Test 1: __contains__ (in operator)")
+    if "Time" in signal_names and "Time" in erg:
+        print("    [OK] 'Time' in erg returns True")
+    else:
+        print("    [FAIL] 'Time' should be in erg")
+        return False
+
+    if "NonExistent" not in erg:
+        print("    [OK] 'NonExistent' in erg returns False")
+    else:
+        print("    [FAIL] 'NonExistent' should not be in erg")
+        return False
+
+    # Test __getitem__
+    print("\n  Test 2: __getitem__ (bracket notation)")
+    if "Time" in signal_names:
+        time1 = erg.get_signal("Time")
+        time2 = erg["Time"]
+        if np.array_equal(time1, time2):
+            print("    [OK] erg['Time'] equals erg.get_signal('Time')")
+        else:
+            print("    [FAIL] erg['Time'] does not match erg.get_signal('Time')")
+            return False
+
+    # Test __getitem__ with non-existent signal
+    print("\n  Test 3: __getitem__ with non-existent signal")
+    try:
+        _ = erg["NonExistentSignal12345"]
+        print("    [FAIL] Should have raised KeyError")
+        return False
+    except KeyError as e:
+        print(f"    [OK] Correctly raised KeyError: {e}")
+
+    # Test __repr__
+    print("\n  Test 4: __repr__")
+    repr_str = repr(erg)
+    expected_count = len(signal_names)
+    if f"signals={expected_count}" in repr_str:
+        print(f"    [OK] repr(erg) = '{repr_str}'")
+    else:
+        print(f"    [FAIL] repr(erg) = '{repr_str}', expected 'signals={expected_count}'")
+        return False
+
+    print("\n  [OK] All special method tests passed!")
+    return True
+
+
+def test_caching() -> bool:
+    """Test ERG instance caching"""
+    erg_file: Path | None = TEST_ERG_FILE
+    if not erg_file or not erg_file.exists():
+        print("Skipping test_caching: test file not available")
+        return False
+
+    print("\nTesting ERG instance caching...")
+
+    # Clear cache first
+    ERG._instances.clear()
+
+    # Test 1: Same filepath returns same instance
+    print("\n  Test 1: Same filepath returns same instance")
+    erg1 = ERG(erg_file)
+    erg2 = ERG(erg_file)
+    if erg1 is erg2:
+        print("    [OK] erg1 is erg2 (same instance)")
+    else:
+        print("    [FAIL] erg1 is not erg2 (should be same instance)")
+        return False
+
+    # Test 2: get_all_signals cache persists
+    print("\n  Test 2: get_all_signals cache persists across instances")
+    erg3 = ERG(erg_file)
+    _ = erg3.get_all_signals()  # Load cache
+
+    # Create another "instance" (should be cached)
+    erg4 = ERG(erg_file)
+    if erg4._struct_array_cache is not None:
+        print("    [OK] Structured array cache persists")
+    else:
+        print("    [FAIL] Structured array cache should persist")
+        return False
+
+    # Test 3: Clear cache
+    print("\n  Test 3: Cache clearing")
+    ERG._instances.clear()
+    erg5 = ERG(erg_file)
+    if erg5._struct_array_cache is None:
+        print("    [OK] Cache cleared, new instance has no cache")
+    else:
+        print("    [FAIL] After clearing, cache should be None")
+        return False
+
+    print("\n  [OK] All caching tests passed!")
+    return True
+
+
+def test_performance_comparison() -> bool:
     """Compare performance: erg_python.get_signal() vs erg_python.get_all_signals() vs cmerg.get()"""
-    erg_file = TEST_ERG_FILE
+    erg_file: Path | None = TEST_ERG_FILE
     if not erg_file or not erg_file.exists():
         print("Skipping performance comparison: test file not available")
         return False
@@ -458,14 +726,14 @@ def test_performance_comparison():
     # Clear cache and force garbage collection
     ERG._instances.clear()
     gc.collect()
-    mem_before_1 = get_memory_usage_mb()
+    mem_before_1: float = get_memory_usage_mb()
 
     # Loading
-    start = time_ns()
-    erg1 = ERG(erg_file)
-    signal_names = erg1.get_signal_names()
-    load_time_1 = time_ns() - start
-    mem_after_load_1 = get_memory_usage_mb()
+    start: int = time_ns()
+    erg1: ERG = ERG(erg_file)
+    signal_names: list[str] = erg1.get_signal_names()
+    load_time_1: int = time_ns() - start
+    mem_after_load_1: float = get_memory_usage_mb()
 
     print(f"Loading:              {load_time_1 / 1_000:>12.2f} μs")
     print(f"Signal count:         {len(signal_names):>12,}")
@@ -703,12 +971,12 @@ def test_performance_comparison():
     print(f"Checking {len(signal_names)} signals...")
     print("  Note: Method 2 (get_all_signals) returns raw data without scaling\n")
 
-    all_match = True
-    failed_signals = []
-    mismatched_signals = []
+    all_match: bool = True
+    failed_signals: list[str] = []
+    mismatched_signals: list[tuple[str, float]] = []
 
     # Compare all signals
-    start_check = time_ns()
+    start_check: int = time_ns()
     for idx, signal_name in enumerate(signal_names):
         # Get signal from all three methods
         try:
@@ -782,7 +1050,7 @@ Examples:
     )
     parser.add_argument("filepath", type=Path, help="Path to the ERG file to test with")
 
-    args = parser.parse_args()
+    args: argparse.Namespace = parser.parse_args()
     TEST_ERG_FILE = args.filepath
 
     print("=" * 60)
@@ -790,18 +1058,22 @@ Examples:
     print("=" * 60)
     print(f"\nTest file: {TEST_ERG_FILE}\n")
 
-    tests = [
+    tests: list[tuple[str, Any]] = [
         ("Basic functionality", test_basic),
         ("Signal info", test_signal_info),
         ("get_all_signals() 2D array", test_get_all_signals),
         ("Error handling", test_error_handling),
         ("Raw byte type handling", test_raw_byte_type_handling),
         ("Pandas DataFrame conversion", test_pandas_conversion),
+        ("Batch metadata methods", test_batch_metadata_methods),
+        ("Signal index", test_signal_index),
+        ("Special methods", test_special_methods),
+        ("Caching behavior", test_caching),
         ("Performance comparison", test_performance_comparison),
     ]
 
-    passed = 0
-    failed = 0
+    passed: int = 0
+    failed: int = 0
 
     for test_name, test_func in tests:
         print(f"\n{'=' * 60}")
