@@ -16,6 +16,7 @@ import cmerg
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
 # Add parent directory to path to import erg_python
 sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
@@ -34,7 +35,7 @@ def time_ns() -> int:
 def get_memory_usage_mb() -> float:
     """Get current process memory usage in MB."""
     process = psutil.Process(os.getpid())
-    return process.memory_info().rss / (1024 ** 2)
+    return process.memory_info().rss / (1024**2)
 
 
 def test_basic():
@@ -608,9 +609,9 @@ def test_performance_comparison():
     non_time_signals = [s for s in signal_names if s != "Time"]
     if len(non_time_signals) >= 3:
         plot_signals = [
-            non_time_signals[0],           # First signal
+            non_time_signals[0],  # First signal
             non_time_signals[len(non_time_signals) // 2],  # Middle signal
-            non_time_signals[-1]           # Last signal
+            non_time_signals[-1],  # Last signal
         ]
     else:
         plot_signals = non_time_signals[:3]  # Use whatever is available
@@ -637,7 +638,7 @@ def test_performance_comparison():
             signal_data = erg1[signal_name]
             signal_unit = erg1.get_signal_unit(signal_name)
 
-            axes1[idx].plot(time_signal, signal_data, linewidth=1.5, color='C0')
+            axes1[idx].plot(time_signal, signal_data, linewidth=1.5, color="C0")
             axes1[idx].set_ylabel(f"{signal_name}\n[{signal_unit}]")
             axes1[idx].grid(True, alpha=0.3)
             axes1[idx].set_xlim(time_signal[0], time_signal[-1])
@@ -645,7 +646,7 @@ def test_performance_comparison():
         axes1[-1].set_xlabel("Time [s]")
         plt.tight_layout()
         plot_file_1 = "plot_method1_get_signal.png"
-        plt.savefig(plot_file_1, dpi=150, bbox_inches='tight')
+        plt.savefig(plot_file_1, dpi=150, bbox_inches="tight")
         plt.close()
         print(f"    Saved: {plot_file_1}")
 
@@ -659,7 +660,7 @@ def test_performance_comparison():
             signal_data_raw = all_signals[signal_name]
             signal_unit = erg2.get_signal_unit(signal_name)
 
-            axes2[idx].plot(time_raw, signal_data_raw, linewidth=1.5, color='C1')
+            axes2[idx].plot(time_raw, signal_data_raw, linewidth=1.5, color="C1")
             axes2[idx].set_ylabel(f"{signal_name}\n[{signal_unit}]")
             axes2[idx].grid(True, alpha=0.3)
             axes2[idx].set_xlim(time_raw[0], time_raw[-1])
@@ -667,7 +668,7 @@ def test_performance_comparison():
         axes2[-1].set_xlabel("Time [s]")
         plt.tight_layout()
         plot_file_2 = "plot_method2_get_all_signals.png"
-        plt.savefig(plot_file_2, dpi=150, bbox_inches='tight')
+        plt.savefig(plot_file_2, dpi=150, bbox_inches="tight")
         plt.close()
         print(f"    Saved: {plot_file_2}")
 
@@ -681,7 +682,7 @@ def test_performance_comparison():
             signal_data_cm = erg_cm.get(signal_name).samples
             signal_unit_cm = erg_cm.get(signal_name).unit
 
-            axes3[idx].plot(time_cm, signal_data_cm, linewidth=1.5, color='C2')
+            axes3[idx].plot(time_cm, signal_data_cm, linewidth=1.5, color="C2")
             axes3[idx].set_ylabel(f"{signal_name}\n[{signal_unit_cm}]")
             axes3[idx].grid(True, alpha=0.3)
             axes3[idx].set_xlim(time_cm[0], time_cm[-1])
@@ -689,7 +690,7 @@ def test_performance_comparison():
         axes3[-1].set_xlabel("Time [s]")
         plt.tight_layout()
         plot_file_3 = "plot_method3_cmerg.png"
-        plt.savefig(plot_file_3, dpi=150, bbox_inches='tight')
+        plt.savefig(plot_file_3, dpi=150, bbox_inches="tight")
         plt.close()
         print(f"    Saved: {plot_file_3}")
 
@@ -766,7 +767,8 @@ def test_performance_comparison():
 if __name__ == "__main__":
     # Reconfigure stdout to use UTF-8 encoding (for Windows compatibility with Unicode chars)
     import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(

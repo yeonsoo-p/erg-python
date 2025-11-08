@@ -77,7 +77,7 @@ static inline void mmap_init(MappedFile* mapped) {
     mapped->data = NULL;
     mapped->size = 0;
 #ifdef _WIN32
-    mapped->file_handle = INVALID_HANDLE_VALUE;
+    mapped->file_handle    = INVALID_HANDLE_VALUE;
     mapped->mapping_handle = NULL;
 #else
     mapped->file_descriptor = -1;

@@ -10,6 +10,8 @@
 extern "C" {
 #endif
 
+#define ERG_HEADER_SIZE 16
+
 /**
  * ERG (CarMaker binary results) file parser
  *

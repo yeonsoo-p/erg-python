@@ -33,39 +33,39 @@
         }                                                                                  \
     } while (0)
 
-#define ERG_GET_STRING_ARG(var, index)                                       \
-    do {                                                                 \
-        var = PyUnicode_AsUTF8(args[index]);                             \
-        if (var == NULL) {                                               \
+#define ERG_GET_STRING_ARG(var, index)                                               \
+    do {                                                                             \
+        var = PyUnicode_AsUTF8(args[index]);                                         \
+        if (var == NULL) {                                                           \
             PyErr_SetString(PyExc_RuntimeError, "Failed to decode string argument"); \
-            return NULL;                                                 \
-        }                                                                \
+            return NULL;                                                             \
+        }                                                                            \
     } while (0)
 
-#define ERG_NEW_LIST(var, size)                                         \
-    do {                                                                \
-        var = PyList_New(size);                                         \
-        if (var == NULL) {                                              \
+#define ERG_NEW_LIST(var, size)                                            \
+    do {                                                                   \
+        var = PyList_New(size);                                            \
+        if (var == NULL) {                                                 \
             PyErr_SetString(PyExc_MemoryError, "Failed to allocate list"); \
-            return NULL;                                                \
-        }                                                               \
+            return NULL;                                                   \
+        }                                                                  \
     } while (0)
 
-#define ERG_NEW_DICT(var)                                               \
-    do {                                                                \
-        var = PyDict_New();                                             \
-        if (var == NULL) {                                              \
+#define ERG_NEW_DICT(var)                                                  \
+    do {                                                                   \
+        var = PyDict_New();                                                \
+        if (var == NULL) {                                                 \
             PyErr_SetString(PyExc_MemoryError, "Failed to allocate dict"); \
-            return NULL;                                                \
-        }                                                               \
+            return NULL;                                                   \
+        }                                                                  \
     } while (0)
 
 typedef struct {
     PyObject_HEAD ERG erg;
-    int     initialized;
-    int     parsed;
-    size_t  supported_signal_count; /* Number of signals excluding raw byte types */
-    size_t* supported_signal_indices; /* Indices of supported signals */
+    int               initialized;
+    int               parsed;
+    size_t            supported_signal_count;   /* Number of signals excluding raw byte types */
+    size_t*           supported_signal_indices; /* Indices of supported signals */
 } ERGObject;
 
 #endif /* ERG_MODULE_H */

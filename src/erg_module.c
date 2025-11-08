@@ -21,10 +21,10 @@ static PyObject* ERG_new(PyTypeObject* type, PyObject* Py_UNUSED(args), PyObject
     ERGObject* self;
     self = (ERGObject*)type->tp_alloc(type, 0);
     if (self != NULL) {
-        self->initialized               = 0;
-        self->parsed                    = 0;
-        self->supported_signal_count    = 0;
-        self->supported_signal_indices  = NULL;
+        self->initialized              = 0;
+        self->parsed                   = 0;
+        self->supported_signal_count   = 0;
+        self->supported_signal_indices = NULL;
         memset(&self->erg, 0, sizeof(ERG));
     }
     return (PyObject*)self;
@@ -196,7 +196,7 @@ ERG_FASTCALL(ERG_get_signal) {
     }
 
     /* Create zero-copy strided view of the signal column from memory-mapped data */
-    data_ptr   = (const char*)self->erg.mapped_file.data + 16 + signal_info->data_offset; /* Skip 16-byte header */
+    data_ptr   = (const char*)self->erg.mapped_file.data + ERG_HEADER_SIZE + signal_info->data_offset; /* Skip 16-byte header */
     dims[0]    = (npy_intp)self->erg.sample_count;
     strides[0] = (npy_intp)self->erg.row_size; /* Stride to next sample */
 
@@ -423,7 +423,7 @@ ERG_NOARGS(ERG_get_all_signals) {
 
     /* Create zero-copy view of memory-mapped data */
     shape[0] = (npy_intp)self->erg.sample_count;
-    data_ptr = (const char*)self->erg.mapped_file.data + 16; /* Skip 16-byte header */
+    data_ptr = (const char*)self->erg.mapped_file.data + ERG_HEADER_SIZE; /* Skip 16-byte header */
 
     array = PyArray_NewFromDescr(&PyArray_Type, dtype, 1, shape, NULL,
                                  (void*)data_ptr, NPY_ARRAY_DEFAULT, NULL);

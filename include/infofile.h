@@ -12,9 +12,9 @@ extern "C" {
  * InfoFile Error Codes (200-299 range)
  */
 typedef enum {
-    INFOFILE_OK = 0,          /* Success */
-    INFOFILE_MMAP_ERROR = 200, /* Memory mapping failed - check infofile_get_mmap_error() */
-    INFOFILE_PARSE_ERROR = 201 /* Parsing failed (reserved for future use) */
+    INFOFILE_OK          = 0,   /* Success */
+    INFOFILE_MMAP_ERROR  = 200, /* Memory mapping failed - check infofile_get_mmap_error() */
+    INFOFILE_PARSE_ERROR = 201  /* Parsing failed (reserved for future use) */
 } InfoFileError;
 
 /**

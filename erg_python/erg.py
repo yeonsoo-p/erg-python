@@ -79,7 +79,6 @@ class ERG:
             self._factors_cache: dict[str, float] = {}
             self._offsets_cache: dict[str, float] = {}
 
-
     def get_signal(self, signal_name: str) -> np.ndarray:
         """
         Get signal data by name.
