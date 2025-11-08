@@ -109,44 +109,6 @@ def test_basic():
     print(f"Warm retrieval time: {batch_warm_time / 1_000:.2f} μs")
     print(f"Average per signal (warm): {batch_warm_time / len(available_signals) / 1_000:.2f} μs")
 
-    # Plot signals if they exist using get_all_signals()
-    plot_signals = ["Car.ax", "Car.v", "Car.Distance"]
-    missing_signals = [s for s in plot_signals if s not in signal_names]
-
-    if missing_signals:
-        print(f"\nWarning: Cannot plot, missing signals: {missing_signals}")
-    elif "Time" not in signal_names:
-        print("\nWarning: Cannot plot, 'Time' signal not found")
-    else:
-        print(f"\nPlotting signals: {plot_signals} (using get_all_signals())")
-
-        # Get all signals as structured array
-        all_data = erg.get_all_signals()
-
-        # Access fields by name
-        plot_time = all_data['Time']
-
-        fig, axes = plt.subplots(3, 1, figsize=(12, 8))
-        fig.suptitle("ERG Signal Plots (from get_all_signals())", fontsize=14, fontweight="bold")
-
-        for idx, signal_name in enumerate(plot_signals):
-            signal_data = all_data[signal_name]
-            signal_unit = erg.get_signal_unit(signal_name)
-
-            axes[idx].plot(plot_time, signal_data, linewidth=1.5)
-            axes[idx].set_ylabel(f"{signal_name}\n[{signal_unit}]")
-            axes[idx].grid(True, alpha=0.3)
-            axes[idx].set_xlim(plot_time[0], plot_time[-1])
-
-        axes[-1].set_xlabel("Time [s]")
-        plt.tight_layout()
-
-        # Save plot to file
-        plot_file = "plot_get_all_signals.png"
-        plt.savefig(plot_file, dpi=150, bbox_inches='tight')
-        plt.close()
-        print(f"Plot saved to: {plot_file}")
-
     print("\nTest passed!")
     return True
 
@@ -510,8 +472,8 @@ def test_performance_comparison():
 
     # Cold read (all signals, first access)
     start = time_ns()
-    erg1_first = erg1[signal_names[0]]
-    erg1_last = erg1[signal_names[-2]]
+    _ = erg1[signal_names[0]]
+    _ = erg1[signal_names[-2]]
     cold_time_1 = time_ns() - start
     mem_after_cold_1 = get_memory_usage_mb()
     print(f"Cold read:            {cold_time_1 / 1_000:>12.2f} μs")
@@ -519,8 +481,8 @@ def test_performance_comparison():
 
     # Hot read (all signals, cached)
     start = time_ns()
-    erg1_first = erg1[signal_names[0]]
-    erg1_last = erg1[signal_names[-2]]
+    _ = erg1[signal_names[0]]
+    _ = erg1[signal_names[-2]]
     hot_time_1 = time_ns() - start
     print(f"Hot read:             {hot_time_1 / 1_000:>12.2f} μs")
 
@@ -545,8 +507,8 @@ def test_performance_comparison():
 
     # Cold read (access via cached structured array field names - raw unscaled)
     start = time_ns()
-    erg2_first = all_signals[signal_names[0]]
-    erg2_last = all_signals[signal_names[-2]]
+    _ = all_signals[signal_names[0]]
+    _ = all_signals[signal_names[-2]]
     cold_time_2 = time_ns() - start
     mem_after_cold_2 = get_memory_usage_mb()
     print(f"Cold read (raw):      {cold_time_2 / 1_000:>12.2f} μs")
@@ -554,8 +516,8 @@ def test_performance_comparison():
 
     # Hot read (repeated access to cached structured array)
     start = time_ns()
-    erg2_first = all_signals[signal_names[0]]
-    erg2_last = all_signals[signal_names[-2]]
+    _ = all_signals[signal_names[0]]
+    _ = all_signals[signal_names[-2]]
     hot_time_2 = time_ns() - start
     print(f"Hot read (raw):       {hot_time_2 / 1_000:>12.2f} μs")
 
@@ -577,8 +539,8 @@ def test_performance_comparison():
 
     # Cold read (all signals, first access)
     start = time_ns()
-    erg_cm_first = erg_cm.get(signal_names[0]).samples
-    erg_cm_last = erg_cm.get(signal_names[-2]).samples
+    _ = erg_cm.get(signal_names[0]).samples
+    _ = erg_cm.get(signal_names[-2]).samples
     cold_time_3 = time_ns() - start
     mem_after_cold_3 = get_memory_usage_mb()
     print(f"Cold read:            {cold_time_3 / 1_000:>12.2f} μs")
@@ -586,8 +548,8 @@ def test_performance_comparison():
 
     # Hot read (all signals, cached)
     start = time_ns()
-    erg_cm_first = erg_cm.get(signal_names[0]).samples
-    erg_cm_last = erg_cm.get(signal_names[-2]).samples
+    _ = erg_cm.get(signal_names[0]).samples
+    _ = erg_cm.get(signal_names[-2]).samples
     hot_time_3 = time_ns() - start
     print(f"Hot read:             {hot_time_3 / 1_000:>12.2f} μs")
 
@@ -642,16 +604,26 @@ def test_performance_comparison():
     print("GENERATING COMPARISON PLOTS")
     print(f"{'=' * 80}")
 
-    # Define signals to plot
-    plot_signals = ["Car.ax", "Car.v", "Car.Distance"]
-    missing_signals = [s for s in plot_signals if s not in signal_names]
-
-    if missing_signals:
-        print(f"\nWarning: Cannot plot, missing signals: {missing_signals}")
-    elif "Time" not in signal_names:
-        print("\nWarning: Cannot plot, 'Time' signal not found")
+    # Define signals to plot: first, middle, and last signal (excluding Time)
+    non_time_signals = [s for s in signal_names if s != "Time"]
+    if len(non_time_signals) >= 3:
+        plot_signals = [
+            non_time_signals[0],           # First signal
+            non_time_signals[len(non_time_signals) // 2],  # Middle signal
+            non_time_signals[-1]           # Last signal
+        ]
     else:
-        print(f"\nPlotting signals: {plot_signals}")
+        plot_signals = non_time_signals[:3]  # Use whatever is available
+
+    if "Time" not in signal_names:
+        print("\nWarning: Cannot plot, 'Time' signal not found")
+    elif len(plot_signals) < 3:
+        print(f"\nWarning: Not enough signals to plot (need 3, found {len(plot_signals)})")
+    else:
+        print(f"\nPlotting signals:")
+        print(f"  First:  {plot_signals[0]}")
+        print(f"  Middle: {plot_signals[1]}")
+        print(f"  Last:   {plot_signals[2]}")
 
         # Get time signal
         time_signal = erg1["Time"]
@@ -725,50 +697,68 @@ def test_performance_comparison():
 
     # Verify data integrity
     print(f"\n{'=' * 80}")
-    print("DATA INTEGRITY CHECK")
+    print("DATA INTEGRITY CHECK - ALL SIGNALS")
     print(f"{'=' * 80}")
+    print(f"Checking {len(signal_names)} signals...")
+    print(f"  Note: Method 2 (get_all_signals) returns raw data without scaling\n")
 
     all_match = True
+    failed_signals = []
+    mismatched_signals = []
 
-    print(f"Comparing first signal: {signal_names[0]}")
-    print(f"  Note: Method 2 (get_all_signals) returns raw data without scaling")
+    # Compare all signals
+    start_check = time_ns()
+    for idx, signal_name in enumerate(signal_names):
+        # Get signal from all three methods
+        try:
+            data1 = erg1[signal_name]  # Method 1: get_signal with scaling
+            data2 = all_signals[signal_name]  # Method 2: raw unscaled data
+            data3 = erg_cm.get(signal_name).samples  # Method 3: cmerg with scaling
+        except Exception as e:
+            print(f"  [FAIL] {signal_name}: Failed to retrieve - {e}")
+            failed_signals.append(signal_name)
+            all_match = False
+            continue
 
-    # Check lengths
-    if len(erg1_first) != len(erg_cm_first) or len(erg1_first) != len(erg2_first):
-        print(f"  [FAIL] Length mismatch: method1={len(erg1_first)}, method2={len(erg2_first)}, method3={len(erg_cm_first)}")
-        all_match = False
-    # Compare methods 1 and 3 (both have scaling)
-    elif not np.allclose(erg1_first, erg_cm_first, rtol=1e-9, atol=1e-12):
-        max_diff = np.abs(erg1_first - erg_cm_first).max()
-        print(f"  [FAIL] Data mismatch (method 1 vs 3, max diff: {max_diff})")
-        all_match = False
-    else:
-        print(f"  [OK] Methods 1 and 3 match (with scaling)")
-        # Show that method 2 is different (raw data)
-        if not np.allclose(erg2_first, erg1_first, rtol=1e-9, atol=1e-12):
-            print(f"  [OK] Method 2 correctly returns raw data (different from scaled)")
+        # Check lengths
+        if len(data1) != len(data3) or len(data1) != len(data2):
+            print(f"  [FAIL] {signal_name}: Length mismatch - method1={len(data1)}, method2={len(data2)}, method3={len(data3)}")
+            failed_signals.append(signal_name)
+            all_match = False
+            continue
 
-    print(f"Comparing last signal: {signal_names[-1]}")
+        # Compare methods 1 and 3 (both have scaling)
+        if not np.allclose(data1, data3, rtol=1e-9, atol=1e-12):
+            max_diff = np.abs(data1 - data3).max()
+            print(f"  [FAIL] {signal_name}: Data mismatch (method 1 vs 3, max diff: {max_diff})")
+            mismatched_signals.append((signal_name, max_diff))
+            all_match = False
 
-    # Check lengths
-    if len(erg1_last) != len(erg_cm_last) or len(erg1_last) != len(erg2_last):
-        print(f"  [FAIL] Length mismatch: method1={len(erg1_last)}, method2={len(erg2_last)}, method3={len(erg_cm_last)}")
-        all_match = False
-    # Compare methods 1 and 3 (both have scaling)
-    elif not np.allclose(erg1_last, erg_cm_last, rtol=1e-9, atol=1e-12):
-        max_diff = np.abs(erg1_last - erg_cm_last).max()
-        print(f"  [FAIL] Data mismatch (method 1 vs 3, max diff: {max_diff})")
-        all_match = False
-    else:
-        print(f"  [OK] Methods 1 and 3 match (with scaling)")
-        # Show that method 2 is different (raw data)
-        if not np.allclose(erg2_last, erg1_last, rtol=1e-9, atol=1e-12):
-            print(f"  [OK] Method 2 correctly returns raw data (different from scaled)")
+    check_time = time_ns() - start_check
+
+    # Summary
+    print(f"\nIntegrity check completed in {check_time / 1_000:.2f} μs")
+    print(f"  Signals checked:      {len(signal_names)}")
+    print(f"  Failed retrievals:    {len(failed_signals)}")
+    print(f"  Data mismatches:      {len(mismatched_signals)}")
+
+    if failed_signals:
+        print(f"\n[FAIL] Failed signals: {failed_signals[:5]}")
+        if len(failed_signals) > 5:
+            print(f"       ... and {len(failed_signals) - 5} more")
+
+    if mismatched_signals:
+        print(f"\n[FAIL] Mismatched signals (showing top 5 by max diff):")
+        sorted_mismatches = sorted(mismatched_signals, key=lambda x: x[1], reverse=True)
+        for signal_name, max_diff in sorted_mismatches[:5]:
+            print(f"       {signal_name}: max diff = {max_diff:.6e}")
 
     if all_match:
-        print("\n[OK] All length checks passed!")
-        print("[OK] Methods 1 & 3 data match (both apply scaling)")
+        print("\n[OK] All signals validated successfully!")
+        print("[OK] Methods 1 & 3 data match perfectly (both apply scaling)")
         print("[OK] Method 2 provides raw zero-copy memory-mapped data")
+    else:
+        print(f"\n[FAIL] Validation failed for {len(failed_signals) + len(mismatched_signals)} signals")
 
     return True
 
