@@ -53,7 +53,7 @@ class ERG:
             cls._instances[filepath] = instance
         return cls._instances[filepath]
 
-    def __init__(self, filepath: str | Path):
+    def __init__(self, filepath: str | Path, prefetch: bool = False):
         """
         Initialize and parse an ERG file.
 
@@ -78,6 +78,10 @@ class ERG:
             self._types_cache: dict[str, np.dtype] = {}
             self._factors_cache: dict[str, float] = {}
             self._offsets_cache: dict[str, float] = {}
+        
+        if prefetch:
+            # Prefetch all signals to populate the structured array cache
+            self.get_all_signals()
 
     def get_signal(self, signal_name: str) -> np.ndarray:
         """
