@@ -1,0 +1,106 @@
+Inconsistent prefetch parameter default value (erg.py:46, erg.py:63)
+__new__ declares prefetch: bool = True
+__init__ also declares prefetch: bool = True
+Bug: When creating a new instance, __new__ is called first with prefetch=True (default), then __init__ is called. Since __new__ doesn't actually use the parameter and __init__ checks if not hasattr(self, "_erg"), the prefetch logic only runs once. However, for cached instances, the prefetch parameter is effectively ignored on subsequent calls.
+Issue: User calling ERG(path, prefetch=False) on an already-cached instance will still see prefetch behavior if the original call used prefetch=True.
+Memory leak in C extension (erg_module.c:106-110)
+malloc() for supported_signal_indices but if erg_parse() fails (line 74-93), the function returns -1 without freeing this allocation.
+Fix: Move the allocation after the parse check or add cleanup before early returns.
+Potential reference leak (erg_module.c:410)
+Line 410: PyDict_SetItemString(dtype_dict, "itemsize", PyLong_FromSize_t(self->erg.row_size));
+PyLong_FromSize_t() returns a new reference that's never freed. PyDict_SetItemString steals the reference, but only if it succeeds. No error checking.
+Should be: PyObject* itemsize = PyLong_FromSize_t(...); if (!itemsize) { cleanup... }; PyDict_SetItemString(..., itemsize); Py_DECREF(itemsize);
+BUGS
+Type mapping duplication and inconsistency (erg_module.c:162-196, 259-293, 338-376, 511-546)
+The same ERG type → NumPy type mapping appears 4 times in the C code (in ERG_get_signal, ERG_get_signal_type, ERG_get_all_signals, and ERG_get_signal_types)
+This is a major code smell - any changes need to be made in 4 places
+Risk: High chance of introducing bugs during maintenance
+Recommendation: Extract to a helper function like erg_type_to_numpy_type(ERGDataType type)
+Inconsistent signal filtering in batch methods (erg_module.c:500)
+ERG_get_signal_types() at line 500 iterates over self->erg.signal_count instead of self->supported_signal_count
+It manually filters raw byte types (lines 505-508)
+Other batch methods (get_signal_units, get_signal_factors, get_signal_offsets) iterate over self->supported_signal_count
+Inconsistency: Different iteration patterns for same purpose
+Signal index inconsistency (erg_module.c:572-577, test_erg.py:572-577)
+get_signal_index() returns the raw index from the underlying C library
+But get_signal_names() only returns filtered signals (excluding raw byte types)
+Bug: The test assumes index 0 = first signal name, but if raw byte type signals exist in the file, indices won't match
+Test will fail on files with raw byte type signals at the beginning
+INEFFICIENCIES
+Redundant metadata caching logic (erg.py:213-281)
+Individual metadata methods cache one-by-one: if signal_name not in self._units_cache
+Batch methods completely replace the cache: self._units_cache = self._erg.get_signal_units()
+Issue: If you call individual methods first, then batch method, you re-fetch everything
+Inefficiency: No coordination between individual and batch caching strategies
+Prefetch happens during __init__ (erg.py:90-92)
+if prefetch: self.get_all_signals() runs during object initialization
+For cached instances, this check runs every time even though initialization already happened
+Better: Move prefetch logic inside the if not hasattr(self, "_erg"): block
+Unnecessary printf in C code (erg_module.c:373)
+Line 373: printf("Unsupported signal type %d for signal %s\n", signal->type, signal->name);
+Bad practice: Debug print statement in production code that writes to stdout
+Should use Python's error reporting or remove entirely
+POTENTIAL ISSUES & CODE SMELLS
+Unsafe type assumption in get_period() (erg_module.c:697-702)
+Lines 701-702: Assumes Time signal is double type
+Directly casts: *(const double*)data_ptr
+Risk: If Time signal is float32 or another type, this will read garbage data
+Should: Check signal type first or use erg_get_signal() API
+No validation of signal factor/offset values (erg.py:134-142)
+Scaling is applied silently: scaled_data = raw_data * factor + offset
+Issue: No validation that factor/offset are reasonable numbers
+Risk: NaN, Inf, or extreme values could corrupt data silently
+Dead code in error handling (erg.py:452-454)
+__repr__ has catch-all exception handler that masks unexpected errors
+Lines 452-454 can never be reached because RuntimeError and AttributeError are caught above
+Generic Exception handler is poor practice - should be specific
+Inconsistent error types
+Some methods raise KeyError (get_signal, get_signal_unit, etc.)
+Some raise ValueError (get_signal for raw byte types)
+Some raise RuntimeError (file not parsed)
+Inconsistency: No clear pattern for when to use which exception type
+Missing boundary checks (erg_module.c:199)
+Line 199: data_ptr = (const char*)self->erg.mapped_file.data + ERG_HEADER_SIZE + signal_info->data_offset;
+No validation that ERG_HEADER_SIZE + data_offset is within mapped file bounds
+Risk: Out-of-bounds memory access if metadata is corrupted
+TESTING ISSUES
+Test has data integrity assumption (test_erg.py:1071)
+Line 1071: Uses np.allclose(data1, data3, rtol=1e-9, atol=1e-12)
+Issue: Float32 data can't achieve 1e-9 relative tolerance (float32 ε ≈ 1e-7)
+Risk: False failures on perfectly valid float32 data
+Test depends on external library behavior (test_erg.py:16)
+import cmerg - test suite depends on external package
+If cmerg has bugs, tests might give false negatives
+Better: Generate reference data independently or use known-good test vectors
+BEST PRACTICE VIOLATIONS
+Mutable class variable (erg.py:40)
+_instances: dict[Path, "ERG"] = {} is a class variable
+Shared across all instances (intentional for caching)
+Risk: In multi-threaded contexts, concurrent access could cause issues
+Missing: Thread safety documentation
+String encoding assumption (erg_module.c:45, 57)
+PyUnicode_AsUTF8() assumes UTF-8 encoding
+Risk: On systems with different default encoding, could fail
+Better: Use PyUnicode_FSConverter for filesystem paths
+No version compatibility checks (init.py:17)
+__version__ = "0.1.0" is defined but never used
+No minimum Python version check
+No NumPy version compatibility validation
+Magic number without constant (erg_module.c:199, 426, 698)
+ERG_HEADER_SIZE (16) appears multiple times
+Good: Defined as constant in header
+Missing: No validation that the constant matches actual file format
+DOCUMENTATION GAPS
+Ambiguous scaling behavior (erg.py:157-159, 198-199)
+Documentation says get_all_signals() returns "RAW unscaled data"
+But documentation also says "IMPORTANT: Direct field access returns RAW unscaled values"
+Confusion: Users might expect get_signal() to be zero-copy too
+Should clarify: "get_signal() creates a scaled copy, get_all_signals()[field] is zero-copy but unscaled"
+Cache invalidation not documented
+Instance caching is documented
+Missing: How to invalidate cache if file changes on disk
+Missing: Behavior when file is modified between calls
+Thread safety not documented
+Memory-mapped I/O is used
+Missing: Is the library thread-safe?
+Missing: Can multiple threads read from the same ERG instance?

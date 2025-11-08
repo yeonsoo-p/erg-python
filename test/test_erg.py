@@ -599,6 +599,77 @@ def test_signal_index() -> bool:
     return True
 
 
+def test_period() -> bool:
+    """Test get_period() method"""
+    erg_file: Path | None = TEST_ERG_FILE
+    if not erg_file or not erg_file.exists():
+        print("Skipping test_period: test file not available")
+        return False
+
+    print("\nTesting get_period()...")
+    erg = ERG(erg_file)
+
+    # Test 1: Get period
+    print("\n  Test 1: Get sampling period")
+    try:
+        period = erg.get_period()
+        print(f"    [OK] Period: {period} ms")
+
+        # Verify it's an integer
+        if not isinstance(period, int):
+            print(f"    [FAIL] Period should be int, got {type(period)}")
+            return False
+
+        # Verify it's positive
+        if period <= 0:
+            print(f"    [FAIL] Period should be positive, got {period}")
+            return False
+
+        print(f"    [OK] Period is valid integer: {period} ms")
+    except Exception as e:
+        print(f"    [FAIL] Failed to get period: {type(e).__name__}: {e}")
+        return False
+
+    # Test 2: Verify period calculation manually
+    print("\n  Test 2: Verify period calculation")
+    try:
+        time_signal = erg.get_signal("Time")
+        sample_count = len(time_signal)
+
+        if sample_count < 2:
+            expected_period = 1  # Default for < 2 samples: 1 ms
+        else:
+            dt = (time_signal[-1] - time_signal[0]) / (sample_count - 1)
+            expected_period = int(round(dt * 1000.0))
+
+        if period == expected_period:
+            print(f"    [OK] Period matches manual calculation: {period} ms")
+        else:
+            print(f"    [FAIL] Period {period} ms != expected {expected_period} ms")
+            return False
+    except Exception as e:
+        print(f"    [FAIL] Manual verification failed: {type(e).__name__}: {e}")
+        return False
+
+    # Test 3: Display sampling information
+    print("\n  Test 3: Sampling information")
+    try:
+        time_signal = erg.get_signal("Time")
+        duration = time_signal[-1] - time_signal[0]
+        sample_count = len(time_signal)
+
+        print(f"    Duration: {duration:.3f} s")
+        print(f"    Samples: {sample_count}")
+        print(f"    Period: {period} ms")
+        print(f"    Frequency: {1000.0/period:.1f} Hz")
+    except Exception as e:
+        print(f"    [FAIL] Info display failed: {type(e).__name__}: {e}")
+        return False
+
+    print("\n  [OK] All period tests passed!")
+    return True
+
+
 def test_special_methods() -> bool:
     """Test special methods (__contains__, __getitem__, __repr__)"""
     erg_file: Path | None = TEST_ERG_FILE
@@ -697,11 +768,11 @@ def test_caching() -> bool:
     # Test 3: Clear cache
     print("\n  Test 3: Cache clearing")
     ERG._instances.clear()
-    erg5 = ERG(erg_file)
+    erg5 = ERG(erg_file, prefetch=False)  # Don't prefetch to test empty cache
     if erg5._struct_array_cache is None:
-        print("    [OK] Cache cleared, new instance has no cache")
+        print("    [OK] Cache cleared, new instance with prefetch=False has no cache")
     else:
-        print("    [FAIL] After clearing, cache should be None")
+        print("    [FAIL] After clearing, cache should be None when prefetch=False")
         return False
 
     print("\n  [OK] All caching tests passed!")
@@ -1067,6 +1138,7 @@ Examples:
         ("Pandas DataFrame conversion", test_pandas_conversion),
         ("Batch metadata methods", test_batch_metadata_methods),
         ("Signal index", test_signal_index),
+        ("Period calculation", test_period),
         ("Special methods", test_special_methods),
         ("Caching behavior", test_caching),
         ("Performance comparison", test_performance_comparison),

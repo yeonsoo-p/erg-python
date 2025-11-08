@@ -211,14 +211,14 @@ time_scaled = erg.get_signal("Time")  # Scaled data (factor & offset applied)
 #### Constructor
 
 ```python
-ERG(filepath: str | Path, prefetch: bool = False)
+ERG(filepath: str | Path, prefetch: bool = True)
 ```
 
 Opens and parses an ERG file. Files are automatically cached - creating multiple ERG objects with the same filepath returns the same cached instance.
 
 **Parameters:**
 - `filepath`: Path to the .erg file (string or Path object)
-- `prefetch`: If True, call `get_all_signals()` during initialization to populate the cache (default: False)
+- `prefetch`: If True, call `get_all_signals()` during initialization to populate the cache (default: True)
 
 **Raises:**
 - `FileNotFoundError`: If the ERG file or its .info file is not found
@@ -273,6 +273,28 @@ Get the scaling offset for a signal. Scaled value = raw * factor + offset.
 ##### `get_signal_index(signal_name: str) -> int`
 
 Get the index of a signal by name.
+
+##### `get_period() -> int`
+
+Get the sampling period in milliseconds from the Time signal.
+
+Calculates the average sampling period by analyzing the Time signal:
+```
+period = (time_last - time_first) / (sample_count - 1) * 1000
+```
+
+**Returns:**
+- Integer sampling period in milliseconds
+
+**Raises:**
+- `KeyError`: If the Time signal is not found
+
+**Example:**
+```python
+erg = ERG("simulation.erg")
+period = erg.get_period()
+print(f"Sampling period: {period} ms")
+```
 
 ##### Batch Metadata Methods
 

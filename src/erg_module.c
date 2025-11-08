@@ -673,6 +673,41 @@ ERG_FASTCALL(ERG_get_signal_index) {
     return PyLong_FromLong(index);
 }
 
+/* ERG.get_period() - returns sampling period in milliseconds from Time signal */
+ERG_NOARGS(ERG_get_period) {
+    const ERGSignal* time_signal;
+    const char*      data_ptr;
+    double           time_first, time_last;
+    double           dt, period_ms;
+
+    ERG_CHECK_PARSED;
+
+    /* Get Time signal metadata */
+    time_signal = erg_get_signal_info(&self->erg, "Time");
+    if (time_signal == NULL) {
+        PyErr_SetString(PyExc_KeyError, "Time signal not found");
+        return NULL;
+    }
+
+    /* Handle edge case: less than 2 samples */
+    if (self->erg.sample_count < 2) {
+        return PyLong_FromLong(1);  /* Default: 1 ms */
+    }
+
+    /* Get pointer to Time signal data (assumes float64/double type) */
+    data_ptr = (const char*)self->erg.mapped_file.data + ERG_HEADER_SIZE + time_signal->data_offset;
+
+    /* Read first and last time values */
+    time_first = *(const double*)data_ptr;
+    time_last = *(const double*)(data_ptr + (self->erg.sample_count - 1) * self->erg.row_size);
+
+    /* Calculate average time step and convert to milliseconds */
+    dt = (time_last - time_first) / (self->erg.sample_count - 1);
+    period_ms = dt * 1000.0;  /* Convert seconds to milliseconds */
+
+    return PyLong_FromLong((long)round(period_ms));
+}
+
 /* Method definitions */
 static PyMethodDef ERG_methods[] = {
     {"get_signal", (PyCFunction)(void (*)(void))ERG_get_signal, METH_FASTCALL,
@@ -699,6 +734,8 @@ static PyMethodDef ERG_methods[] = {
      "Get scaling offset for a signal by name"},
     {"get_signal_index", (PyCFunction)(void (*)(void))ERG_get_signal_index, METH_FASTCALL,
      "Get index of signal by name"},
+    {"get_period", (PyCFunction)ERG_get_period, METH_NOARGS,
+     "Get sampling period in milliseconds from Time signal"},
     {NULL}
 };
 

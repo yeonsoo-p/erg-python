@@ -300,6 +300,26 @@ class ERG:
         """
         return self._erg.get_signal_index(signal_name)
 
+    def get_period(self) -> int:
+        """
+        Get the sampling period in milliseconds from the Time signal.
+
+        Calculates the average sampling period by analyzing the Time signal:
+        period = (time_last - time_first) / (sample_count - 1) * 1000
+
+        Returns:
+            Sampling period in milliseconds (integer)
+
+        Raises:
+            KeyError: If the Time signal is not found in the file
+
+        Example:
+            >>> erg = ERG("simulation.erg")
+            >>> period = erg.get_period()
+            >>> print(f"Sampling period: {period} ms")
+        """
+        return self._erg.get_period()
+
     # ========================================
     # Batch Metadata Methods
     # ========================================
