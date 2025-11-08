@@ -370,6 +370,12 @@ class ERG:
     def __repr__(self) -> str:
         """String representation of ERG object."""
         try:
-            return f"ERG(signals={len(self.get_signal_names())})"
-        except:
-            return "ERG(not loaded)"
+            signal_count = len(self.get_signal_names())
+            return f"ERG(signals={signal_count})"
+        except (RuntimeError, AttributeError) as e:
+            # RuntimeError: File not parsed or failed to load
+            # AttributeError: _erg attribute not initialized
+            return f"ERG(error: {type(e).__name__})"
+        except Exception as e:
+            # Catch-all for unexpected errors
+            return f"ERG(error: {type(e).__name__}: {str(e)})"

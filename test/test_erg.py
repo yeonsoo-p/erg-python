@@ -119,7 +119,7 @@ def test_signal_info():
     erg_file = TEST_ERG_FILE
 
     if not erg_file or not erg_file.exists():
-        print(f"Skipping test_signal_info: test file not available")
+        print("Skipping test_signal_info: test file not available")
         return False
 
     erg = ERG(erg_file)
@@ -140,7 +140,7 @@ def test_get_all_signals():
     """Test get_all_signals() structured array functionality"""
     erg_file = TEST_ERG_FILE
     if not erg_file or not erg_file.exists():
-        print(f"Skipping test_get_all_signals: test file not available")
+        print("Skipping test_get_all_signals: test file not available")
         return False
 
     print("\nTesting get_all_signals()...")
@@ -191,7 +191,7 @@ def test_error_handling():
     if erg_file and erg_file.exists():
         erg = ERG(erg_file)
         try:
-            data = erg.get_signal("NonExistentSignal12345")
+            _ = erg.get_signal("NonExistentSignal12345")
             print("ERROR: Should have raised KeyError for non-existent signal")
             return False
         except KeyError as e:
@@ -343,7 +343,7 @@ def test_pandas_conversion():
     try:
         all_data = erg.get_all_signals()
         df_all = pd.DataFrame(all_data)
-        print(f"    OK: Created DataFrame from structured array")
+        print("    OK: Created DataFrame from structured array")
         print(f"    Shape: {df_all.shape}")
         print(f"    Memory usage: {df_all.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
     except Exception as e:
@@ -358,7 +358,7 @@ def test_pandas_conversion():
 
         if "Time" in df_indexed.columns:
             df_indexed = df_indexed.set_index("Time")
-            print(f"    OK: Created time-indexed DataFrame")
+            print("    OK: Created time-indexed DataFrame")
             print(f"    Shape: {df_indexed.shape}")
             print(f"    Time range: {df_indexed.index[0]:.3f} to {df_indexed.index[-1]:.3f} seconds")
         else:
@@ -410,7 +410,7 @@ def test_pandas_conversion():
             print(f"    ERROR: Found {len(raw_byte_cols)} raw byte columns: {raw_byte_cols[:5]}")
             return False
         else:
-            print(f"    OK: No raw byte type columns found in DataFrame")
+            print("    OK: No raw byte type columns found in DataFrame")
             print(f"    All {len(df.columns)} columns have supported dtypes")
     except Exception as e:
         print(f"    ERROR: {type(e).__name__}: {e}")
@@ -426,7 +426,7 @@ def test_pandas_conversion():
         csv_str = df.head(5).to_csv(index=False)
         lines = csv_str.split("\n")
         num_cols = len(lines[0].split(","))
-        print(f"    OK: DataFrame can be exported to CSV")
+        print("    OK: DataFrame can be exported to CSV")
         print(f"    Number of columns in CSV: {num_cols}")
 
         if num_cols != len(signal_names):
@@ -444,7 +444,7 @@ def test_performance_comparison():
     """Compare performance: erg_python.get_signal() vs erg_python.get_all_signals() vs cmerg.get()"""
     erg_file = TEST_ERG_FILE
     if not erg_file or not erg_file.exists():
-        print(f"Skipping performance comparison: test file not available")
+        print("Skipping performance comparison: test file not available")
         return False
 
     print(f"\n{'=' * 80}")
@@ -593,12 +593,12 @@ def test_performance_comparison():
     print(f"{'2. erg_python.get_all_signals()':<40} {mem_delta_load_2:>12.2f} {mem_delta_cold_2:>12.2f} {mem_delta_load_2 + mem_delta_cold_2:>12.2f}")
     print(f"{'3. cmerg.get()':<40} {mem_delta_load_3:>12.2f} {mem_delta_cold_3:>12.2f} {mem_delta_load_3 + mem_delta_cold_3:>12.2f}")
 
-    print(f"\nNOTE: Memory measurements show incremental increases and may be affected by:")
-    print(f"  - Python garbage collection timing")
-    print(f"  - OS memory allocation strategies")
-    print(f"  - Background Python processes")
-    print(f"  - Memory-mapped files (shown in RSS but may not be physical RAM)")
-    print(f"  Use these numbers for relative comparison, not absolute values.")
+    print("\nNOTE: Memory measurements show incremental increases and may be affected by:")
+    print("  - Python garbage collection timing")
+    print("  - OS memory allocation strategies")
+    print("  - Background Python processes")
+    print("  - Memory-mapped files (shown in RSS but may not be physical RAM)")
+    print("  Use these numbers for relative comparison, not absolute values.")
 
     # ===== PLOT SIGNALS FOR ALL METHODS =====
     print(f"\n{'=' * 80}")
@@ -621,7 +621,7 @@ def test_performance_comparison():
     elif len(plot_signals) < 3:
         print(f"\nWarning: Not enough signals to plot (need 3, found {len(plot_signals)})")
     else:
-        print(f"\nPlotting signals:")
+        print("\nPlotting signals:")
         print(f"  First:  {plot_signals[0]}")
         print(f"  Middle: {plot_signals[1]}")
         print(f"  Last:   {plot_signals[2]}")
@@ -694,14 +694,14 @@ def test_performance_comparison():
         plt.close()
         print(f"    Saved: {plot_file_3}")
 
-        print(f"\n[OK] All comparison plots saved!")
+        print("\n[OK] All comparison plots saved!")
 
     # Verify data integrity
     print(f"\n{'=' * 80}")
     print("DATA INTEGRITY CHECK - ALL SIGNALS")
     print(f"{'=' * 80}")
     print(f"Checking {len(signal_names)} signals...")
-    print(f"  Note: Method 2 (get_all_signals) returns raw data without scaling\n")
+    print("  Note: Method 2 (get_all_signals) returns raw data without scaling\n")
 
     all_match = True
     failed_signals = []
@@ -749,7 +749,7 @@ def test_performance_comparison():
             print(f"       ... and {len(failed_signals) - 5} more")
 
     if mismatched_signals:
-        print(f"\n[FAIL] Mismatched signals (showing top 5 by max diff):")
+        print("\n[FAIL] Mismatched signals (showing top 5 by max diff):")
         sorted_mismatches = sorted(mismatched_signals, key=lambda x: x[1], reverse=True)
         for signal_name, max_diff in sorted_mismatches[:5]:
             print(f"       {signal_name}: max diff = {max_diff:.6e}")
