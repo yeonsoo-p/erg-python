@@ -86,8 +86,6 @@ No version compatibility checks (init.py:17)
 __version__ = "0.1.0" is defined but never used
 No minimum Python version check
 No NumPy version compatibility validation
-Magic number without constant (erg_module.c:199, 426, 698)
-ERG_HEADER_SIZE (16) appears multiple times
 Good: Defined as constant in header
 Missing: No validation that the constant matches actual file format
 DOCUMENTATION GAPS
