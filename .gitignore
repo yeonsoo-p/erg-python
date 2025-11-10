@@ -53,8 +53,6 @@ venv*/
 .ruff_cache
 
 # Python build artifacts
-*.pyd
-*.so
 __pycache__/
 *.pyc
 *.pyo
