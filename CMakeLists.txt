@@ -40,7 +40,7 @@ target_link_libraries(erg_python PRIVATE
 )
 
 # Set compiler flags
-target_compile_options(erg_python PRIVATE -O3 -DNDEBUG -Wall -Wextra ${OpenMP_C_FLAGS})
+target_compile_options(erg_python PRIVATE -O3 -march=x86-64 -flto -DNDEBUG -Wall -Wextra ${OpenMP_C_FLAGS})
 
 # Set output directory
 set_target_properties(erg_python PROPERTIES
