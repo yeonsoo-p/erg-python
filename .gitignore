@@ -60,6 +60,7 @@ __pycache__/
 *.egg-info/
 dist/
 .eggs/
+bin/
 
 # Plot outputs from tests
 *.png
